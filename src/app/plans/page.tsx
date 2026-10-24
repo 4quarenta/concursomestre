@@ -22,8 +22,7 @@ import { calculateSubscriptionProRatedCredit, getCanonicalPlanName, getConfigure
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import { PlanCard } from './components/PlanCard';
 import { useToast } from '@providers/ToastProvider';
-import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
-import { buildProfilePath } from '../profile/profileNavigation';
+import { ArrowRight, AlertTriangle, BarChart3, BookOpen, CalendarDays, Check, CheckCircle2, Clock3, Info, Star, XCircle } from 'lucide-react';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
 
@@ -72,7 +71,7 @@ const PlansPage: React.FC = () => {
     const [plans, setPlans] = useState<Plan[]>([]);
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState<number | null>(null);
-    const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
+    const [billingCycle, setBillingCycle] = useState<BillingCycle>('annual');
     const [showDowngradeModal, setShowDowngradeModal] = useState(false);
     const [pendingDowngradePlan, setPendingDowngradePlan] = useState<Plan | null>(null);
 
@@ -197,6 +196,45 @@ const PlansPage: React.FC = () => {
     ), [currentUser?.subscription, plans]);
     const allowSameTierCycleChangeEnabled = resolveSystemFeatureFlag(systemSettings, 'sameTierCycleChangeEnabled', false);
 
+    const freePlan = filteredPlans.find((plan) => getCatalogPlanName(plan) === 'Gratuito');
+    const elitePlan = filteredPlans.find((plan) => getCatalogPlanName(plan) === 'Elite');
+    const additionalPlans = filteredPlans.filter((plan) => !['Gratuito', 'Elite'].includes(getCatalogPlanName(plan)));
+    const eliteOffer = elitePlan ? planOffersById[elitePlan.id] : null;
+    const eliteIsCurrent = Boolean(elitePlan && currentUser?.subscription?.plan_id === elitePlan.id && hasActivePlanAccess(currentUser));
+    const eliteCycleCount = eliteOffer?.cycleCount || (elitePlan?.interval_unit === 'year'
+        ? 12
+        : elitePlan?.interval_unit === 'month'
+            ? (elitePlan.interval_count || 1)
+            : 1);
+    const eliteMonthlyPrice = eliteOffer?.discountedMonthlyAmount ?? (elitePlan ? elitePlan.price / eliteCycleCount : 0);
+    const eliteCyclePrice = eliteOffer?.discountedCycleAmount ?? elitePlan?.price ?? 0;
+    const eliteCheckoutPrice = Math.max(0, eliteCyclePrice - (eliteIsCurrent ? 0 : globalProRatedCredit));
+    const eliteMonthlyDisplayPrice = globalProRatedCredit > 0 && !eliteIsCurrent
+        ? eliteCheckoutPrice / eliteCycleCount
+        : eliteMonthlyPrice;
+    const eliteFeatures = getPublicPlanFeaturesForPlan('Elite', systemSettings.planEntitlements, { maxItems: 8, includeDisabled: false });
+    const freeFeatures = getPublicPlanFeaturesForPlan('Gratuito', systemSettings.planEntitlements, { maxItems: 6, includeDisabled: false });
+    const comparisonPlans = [freePlan, ...filteredPlans.filter((plan) => getCatalogPlanName(plan) !== 'Gratuito')]
+        .filter((plan): plan is Plan => Boolean(plan));
+    const comparisonFeatures = Array.from(new Set(comparisonPlans.flatMap((plan) => (
+        getPublicPlanFeaturesForPlan(getCatalogPlanName(plan), systemSettings.planEntitlements).map((feature) => feature.text)
+    ))));
+    const monthlyElitePlan = plans.find((plan) => getCatalogPlanName(plan) === 'Elite' && resolvePlanCycleKey(plan) === 'monthly');
+    const monthlyEliteCoupon = monthlyElitePlan
+        ? resolvePlanAutoCouponsById([monthlyElitePlan], systemSettings.coupons || [])[monthlyElitePlan.id]?.discountAmount || 0
+        : 0;
+    const monthlyEliteOffer = monthlyElitePlan
+        ? resolvePlanOffer({
+            plan: monthlyElitePlan,
+            pricing: systemSettings.pricing,
+            planDetails: systemSettings.planDetails,
+            discountAmount: monthlyEliteCoupon,
+        })
+        : null;
+    const annualSavings = monthlyEliteOffer && elitePlan && billingCycle === 'annual'
+        ? Math.max(0, (monthlyEliteOffer.discountedCycleAmount * 12) - eliteCyclePrice)
+        : 0;
+
     const handleSubscribe = async (plan: Plan) => {
         if (plan.price === 0) {
             if (!currentUser) {
@@ -249,50 +287,171 @@ const PlansPage: React.FC = () => {
 
     return (
         <div className="relative mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-            <div className="relative mb-10 text-center md:mb-12">
-                <Link
-                    href={buildProfilePath('personal')}
-                    className="mb-5 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 transition-colors hover:text-slate-700 dark:hover:text-white md:absolute md:left-0 md:top-2 md:mb-0"
-                >
-                    <ArrowLeft size={16} />
-                    Voltar
-                </Link>
-                <h1 className="mb-4 text-3xl font-bold text-slate-900 dark:text-white md:text-4xl">Escolha o seu Plano</h1>
-                <p className="mx-auto mb-8 max-w-2xl text-base text-slate-600 dark:text-slate-400 md:text-lg">
-                    Desbloqueie todo o potencial dos seus estudos com nossos planos premium.
-                </p>
+            <nav aria-label="Navegação estrutural" className="mb-4 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                <Link href="/" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Início</Link>
+                <span aria-hidden="true">/</span>
+                <span aria-current="page" className="font-semibold text-slate-800 dark:text-slate-200">Planos</span>
+            </nav>
 
-                <div className="inline-flex flex-wrap items-center justify-center gap-1 rounded-xl bg-slate-200 p-1 transition-colors dark:bg-slate-800">
+            <header className="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-6 dark:border-slate-800 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Planos para estudar no seu ritmo</h1>
+                    <p className="mt-1 max-w-2xl text-base text-slate-600 dark:text-slate-400">
+                        Compare os recursos e escolha o apoio que combina com sua preparação.
+                    </p>
+                </div>
+                <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <CheckCircle2 size={16} className="shrink-0 text-emerald-500" />
+                    Valores e descontos finais são confirmados no checkout.
+                </p>
+            </header>
+
+            <section aria-label="Período de assinatura" className="mb-4 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Período de assinatura</h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">O valor e a economia variam conforme o ciclo selecionado.</p>
+                </div>
+                <div className="inline-flex w-full rounded-md border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-950 sm:w-auto" role="group" aria-label="Ciclo de cobrança">
                     {BILLING_CYCLE_OPTIONS.map((option) => (
                         <button
                             key={option.key}
+                            type="button"
+                            aria-pressed={billingCycle === option.key}
                             onClick={() => setBillingCycle(option.key)}
-                            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-all ${
+                            className={`inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded px-2.5 text-xs font-semibold transition-colors sm:flex-none sm:px-3 ${
                                 billingCycle === option.key
-                                    ? 'bg-indigo-600 text-white shadow-lg'
-                                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
                             }`}
                         >
                             {option.label}
                             {eliteDiscountBadgesByCycle[option.key] > 0 && (
-                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${
-                                    billingCycle === option.key
-                                        ? 'bg-white/20 text-white'
-                                        : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
-                                }`}>
-                                    {eliteDiscountBadgesByCycle[option.key]}% OFF
+                                <span className={`rounded px-1 py-0.5 text-[9px] font-bold ${billingCycle === option.key ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'}`}>
+                                    {eliteDiscountBadgesByCycle[option.key]}% menor
                                 </span>
                             )}
                         </button>
                     ))}
                 </div>
+            </section>
+
+            <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.5fr)]">
+                {freePlan && (
+                    <section aria-labelledby="free-plan-title" className="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Para começar</p>
+                        <h2 id="free-plan-title" className="mt-1 text-xl font-bold text-slate-900 dark:text-white">Gratuito</h2>
+                        <p className="mt-2 min-h-10 text-sm text-slate-600 dark:text-slate-400">{freePlan.description || 'Pratique questões e conheça as ferramentas essenciais da plataforma.'}</p>
+                        <div className="mt-auto pt-6">
+                            <p className="flex items-baseline gap-2 text-slate-900 dark:text-white">
+                                <span className="text-xs font-semibold text-slate-500">R$</span>
+                                <span className="text-4xl font-bold">0</span>
+                                <span className="text-sm text-slate-500">/ sempre</span>
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Sem cobrança recorrente.</p>
+                        </div>
+                        <div className="my-4 border-t border-slate-200 dark:border-slate-800" />
+                        <p className="mb-3 text-xs font-semibold text-slate-700 dark:text-slate-300">Incluído no plano</p>
+                        <ul className="mb-5 space-y-2.5">
+                            {freeFeatures.map((feature) => (
+                                <li key={feature.text} className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+                                    <Check size={15} aria-hidden="true" className="mt-0.5 shrink-0 text-emerald-500" />
+                                    <span>{feature.text}</span>
+                                </li>
+                            ))}
+                        </ul>
+                        <button type="button" onClick={() => router.push('/questoes')} className="min-h-10 w-full rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-100 dark:hover:bg-slate-800">
+                            Continuar no gratuito
+                        </button>
+                    </section>
+                )}
+
+                {elitePlan && (
+                    <section aria-labelledby="elite-plan-title" className="relative flex h-full flex-col rounded-lg border-2 border-indigo-500 bg-white p-5 shadow-sm dark:bg-slate-900">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">Mais recursos para sua preparação</p>
+                                <h2 id="elite-plan-title" className="mt-1 text-xl font-bold text-slate-900 dark:text-white">Elite</h2>
+                            </div>
+                            <span className="inline-flex items-center gap-1 rounded border border-indigo-300 px-2 py-1 text-[10px] font-bold uppercase text-indigo-700 dark:border-indigo-700 dark:text-indigo-300">
+                                <Star size={12} aria-hidden="true" /> Plano em destaque
+                            </span>
+                        </div>
+                        <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-400">{elitePlan.description || 'Um conjunto completo de ferramentas para manter consistência até o dia da prova.'}</p>
+
+                        {eliteDiscountBadgesByCycle[billingCycle] > 0 && (
+                            <p className="mt-3 inline-flex w-fit items-center gap-1.5 rounded bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                <CalendarDays size={14} aria-hidden="true" />
+                                Economia de {eliteDiscountBadgesByCycle[billingCycle]}% neste ciclo
+                            </p>
+                        )}
+
+                        <div className="mt-5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-slate-900 dark:text-white">
+                            <span className="text-xs font-semibold text-slate-500">R$</span>
+                            <span className="text-4xl font-bold tabular-nums">{eliteMonthlyDisplayPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            <span className="text-sm text-slate-500">{billingCycle === 'monthly' ? '/ mês' : '/ mês equivalente'}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                            Cobrança de <strong className="font-semibold text-slate-800 dark:text-slate-200">R$ {eliteCheckoutPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} por {billingCycle === 'annual' ? 'ano' : billingCycle === 'quarterly' ? 'trimestre' : 'mês'}</strong>.
+                        </p>
+
+                        <div className="my-4 flex flex-col gap-2 border-y border-slate-200 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
+                            <p className="max-w-2xl text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                                {billingCycle === 'annual' && eliteDiscountBadgesByCycle.annual > 0
+                                    ? <>O ciclo anual fica <strong className="text-slate-900 dark:text-white">{eliteDiscountBadgesByCycle.annual}% abaixo do valor mensal equivalente</strong>. Descontos ativos são confirmados no checkout.</>
+                                    : <>Revise o valor, a forma de pagamento e a renovação no checkout antes de confirmar.</>}
+                            </p>
+                            {annualSavings > 0 && (
+                                <p className="shrink-0 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                                    R$ {annualSavings.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} de economia no ano
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="grid flex-1 gap-5 md:grid-cols-2">
+                            <div>
+                                <h3 className="mb-3 text-xs font-semibold text-slate-900 dark:text-white">Recursos do Elite</h3>
+                                <ul className="space-y-2.5">
+                                    {eliteFeatures.map((feature) => (
+                                        <li key={feature.text} className="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-300">
+                                            <Check size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-emerald-500" />
+                                            <span>{feature.text}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                            <div className="border-t border-slate-200 pt-4 md:border-l md:border-t-0 md:pl-5 md:pt-0 dark:border-slate-800">
+                                <h3 className="mb-3 text-xs font-semibold text-slate-900 dark:text-white">Ferramentas para seu estudo</h3>
+                                <ul className="grid grid-cols-2 gap-x-3 gap-y-3 text-xs text-slate-600 dark:text-slate-300">
+                                    <li><Link className="inline-flex items-center gap-2 hover:text-indigo-600 dark:hover:text-indigo-300" href="/questoes"><BookOpen size={14} aria-hidden="true" /> Banco de questões</Link></li>
+                                    <li><Link className="inline-flex items-center gap-2 hover:text-indigo-600 dark:hover:text-indigo-300" href="/simulation"><Clock3 size={14} aria-hidden="true" /> Simulados</Link></li>
+                                    <li><Link className="inline-flex items-center gap-2 hover:text-indigo-600 dark:hover:text-indigo-300" href="/x-ray"><BarChart3 size={14} aria-hidden="true" /> Raio-X da banca</Link></li>
+                                    <li><Link className="inline-flex items-center gap-2 hover:text-indigo-600 dark:hover:text-indigo-300" href="/dashboard"><CheckCircle2 size={14} aria-hidden="true" /> Desempenho e evolução</Link></li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => void handleSubscribe(elitePlan)}
+                            disabled={eliteIsCurrent || processingId === elitePlan.id}
+                            className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-400 dark:disabled:bg-slate-700"
+                        >
+                            {eliteIsCurrent ? 'Plano atual' : processingId === elitePlan.id ? 'Processando...' : `Escolher Elite ${billingCycle === 'annual' ? 'anual' : billingCycle === 'quarterly' ? 'trimestral' : 'mensal'}`}
+                            {!eliteIsCurrent && processingId !== elitePlan.id && <ArrowRight size={16} aria-hidden="true" />}
+                        </button>
+                        <p className="mt-2 flex items-start gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
+                            <Info size={13} aria-hidden="true" className="mt-0.5 shrink-0" />
+                            Valor, forma de pagamento e renovação serão apresentados antes da confirmação.
+                        </p>
+                    </section>
+                )}
             </div>
 
-            <div className="mx-auto grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                    {filteredPlans.map((plan) => {
-                        const activeSub = hasActivePlanAccess(currentUser);
-                        const isCurrent = currentUser?.subscription?.plan_id === plan.id && activeSub;
-                        return (
+            {additionalPlans.length > 0 && (
+                <section className="mt-8" aria-labelledby="additional-plans-title">
+                    <h2 id="additional-plans-title" className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">Outras opções do catálogo</h2>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {additionalPlans.map((plan) => (
                             <PlanCard
                                 key={plan.id}
                                 plan={plan}
@@ -300,14 +459,55 @@ const PlansPage: React.FC = () => {
                                 offer={planOffersById[plan.id]}
                                 featuresOverride={getPublicPlanFeaturesForPlan(getCatalogPlanName(plan), systemSettings.planEntitlements)}
                                 onSubscribe={handleSubscribe}
-                                isCurrent={isCurrent}
+                                isCurrent={currentUser?.subscription?.plan_id === plan.id && hasActivePlanAccess(currentUser)}
                                 isDisabled={false}
                                 proRatedCredit={globalProRatedCredit}
                                 isLoading={processingId === plan.id}
                             />
-                        );
-                    })}
-            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            <section className="mt-8" aria-labelledby="plan-comparison-title">
+                <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                    <div>
+                        <h2 id="plan-comparison-title" className="text-lg font-semibold text-slate-900 dark:text-white">Compare os principais recursos</h2>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Veja o que está disponível em cada plano exibido.</p>
+                    </div>
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+                    <table className="w-full min-w-[520px] border-collapse text-left text-xs">
+                        <thead className="bg-slate-50 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                            <tr>
+                                <th scope="col" className="px-3 py-3 font-semibold">Recurso</th>
+                                {comparisonPlans.map((plan) => (
+                                    <th key={plan.id} scope="col" className="px-3 py-3 text-center font-semibold">{planDisplayNames[plan.id] || getCatalogPlanName(plan)}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {comparisonFeatures.map((featureText) => {
+                                return (
+                                    <tr key={featureText} className="border-t border-slate-200 dark:border-slate-800">
+                                        <th scope="row" className="px-3 py-3 font-medium text-slate-700 dark:text-slate-300">{featureText}</th>
+                                        {comparisonPlans.map((plan) => {
+                                            const included = getPublicPlanFeaturesForPlan(getCatalogPlanName(plan), systemSettings.planEntitlements)
+                                                .some((feature) => feature.text === featureText && feature.included);
+                                            return (
+                                                <td key={plan.id} className={`px-3 py-3 text-center ${included ? 'font-semibold text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-400'}`}>
+                                                    {included ? 'Incluído' : '—'}
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+                <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">* Recursos e limites seguem as regras vigentes da plataforma e do plano selecionado.</p>
+            </section>
 
             {showDowngradeModal && pendingDowngradePlan && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 p-4 backdrop-blur-sm">
