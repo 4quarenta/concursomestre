@@ -50,6 +50,9 @@ if (preg_match('/CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+questions\b/i', $migr
 if (preg_match('/\bCONSTRAINT\s+[a-z_]+\s+FOREIGN\s+KEY|\bREFERENCES\s+[a-z_]+\s*\(/i', $migration) === 1) {
     throw new RuntimeException('Temporary CM Batch migration must defer foreign keys until historical backfill is complete.');
 }
+if (str_contains($migration, 'uq_question_prova_source_question')) {
+    throw new RuntimeException('Source position uniqueness already guards this identity; avoid the oversized redundant composite index.');
+}
 foreach (['Apenas validar', 'Salvar prévia para revisão', 'nenhum item será publicado', 'admin/cm_batch.php'] as $needle) {
     if (!str_contains($adminPanel, $needle)) {
         throw new RuntimeException('Missing admin preview contract: ' . $needle);

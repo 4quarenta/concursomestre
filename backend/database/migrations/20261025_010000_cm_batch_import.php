@@ -197,10 +197,6 @@ return static function (PDO $db): void {
         UNIQUE KEY uq_question_prova_source_position (
             source_provider, source_exam_external_id, source_booklet_key, source_version, question_number
         ),
-        UNIQUE KEY uq_question_prova_source_question (
-            source_provider, source_exam_external_id, source_booklet_key, source_version,
-            source_question_external_id, question_number
-        ),
         KEY idx_question_prova_source_occurrence (question_prova_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
