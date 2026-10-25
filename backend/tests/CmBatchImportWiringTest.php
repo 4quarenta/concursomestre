@@ -28,8 +28,8 @@ foreach ([
     "'questionWrites' => 0",
     "'pendingPublication' => (int) \$summary['questionCount']",
     'source_identity_parent_unresolved_or_mismatched',
-    'exact_content_repeated_within_batch',
-    'external_identity_fingerprint_conflict_or_unverified',
+    'same_verified_content_repeated_within_batch',
+    'gran_external_id_content_conflict',
     'chmod($storedPath, 0600)',
 ] as $needle) {
     if (!str_contains($service, $needle)) {
