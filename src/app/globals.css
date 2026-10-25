@@ -659,9 +659,14 @@
 .dark .cm-landing-theme {
   color: #e2e8f0;
   --cm-theme-page: #0f172a !important;
+  --cm-theme-header: rgba(15, 23, 42, 0.94) !important;
+  --cm-theme-header-ink: #e2e8f0 !important;
   --cm-theme-hero: #0f172a !important;
+  --cm-theme-ink: #e2e8f0 !important;
+  --cm-theme-muted: #94a3b8 !important;
   --cm-theme-accent-soft: #24234a !important;
   --cm-theme-border: #334155 !important;
+  --cm-theme-device-frame: #080d2e !important;
 }
 
 .dark .cm-landing-theme [class~="bg-white"] {
