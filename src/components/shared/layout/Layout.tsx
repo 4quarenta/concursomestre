@@ -107,8 +107,9 @@ const clearEmailVerificationDismissals = () => {
 
 const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, fullWidthContent = false, contentContainer = 'main' }) => {
   const ContentContainer = contentContainer;
-  const { currentUser: user, refreshUser } = useAuth();
+  const { currentUser: user, isLoading: authIsLoading, refreshUser } = useAuth();
   const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const isSystemSettingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
   const notifications = useNotificationsStore((state) => state.notifications);
   const { refreshNotifications } = useNotificationsLoader();
   const reports = useAdminDataStore((state) => state.reports);
@@ -131,6 +132,7 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
     };
   }, [locationHash, locationSearch, pathname]);
   const canOpenAdminPanel = canAccessAdminPanel(user);
+  const isNavigationLoading = authIsLoading || !isSystemSettingsLoaded;
   const isStrictAdmin = Boolean(user?.isAdmin || user?.role === 'admin');
   const practiceEnabled = resolveSystemFeatureFlag(systemSettings, 'practiceEnabled');
   const annotatedLawsEnabled = resolveSystemFeatureFlag(systemSettings, 'annotatedLawsEnabled');
@@ -486,6 +488,37 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
     );
   };
 
+  const renderTopNavigationSkeleton = () => (
+    <div
+      role="status"
+      aria-label="Carregando menu principal"
+      aria-busy="true"
+      className="mx-auto flex h-12 w-full max-w-7xl items-center gap-5 px-5 md:h-[54px] md:gap-6 md:px-0"
+    >
+      <span className="sr-only">Carregando menu principal</span>
+      <div aria-hidden="true" className="flex min-w-0 flex-1 items-center gap-5 overflow-hidden md:gap-6">
+        {[72, 86, 65, 88, 102, 92, 84].map((width, index) => (
+          <span
+            key={`nav-skeleton-${index}`}
+            className="h-3 shrink-0 animate-pulse rounded-sm bg-slate-200 dark:bg-slate-700"
+            style={{ width }}
+          />
+        ))}
+      </div>
+      <span aria-hidden="true" className="h-3 w-14 shrink-0 animate-pulse rounded-sm bg-slate-200 dark:bg-slate-700" />
+    </div>
+  );
+
+  const renderAccountActionSkeleton = () => (
+    <div aria-hidden="true" className="flex items-center gap-3">
+      <span className="h-9 w-9 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+      <span className="hidden min-[851px]:block">
+        <span className="block h-3 w-20 animate-pulse rounded-sm bg-slate-200 dark:bg-slate-700" />
+        <span className="mt-2 block h-2.5 w-14 animate-pulse rounded-sm bg-slate-200 dark:bg-slate-700" />
+      </span>
+    </div>
+  );
+
   const renderMoreMenuActions = () => (
     <>
       <div className="mt-1 border-t border-slate-100 pt-1 dark:border-slate-800">
@@ -692,7 +725,7 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
                   <Sun size={20} className="hidden dark:block" />
                 </span>
               </button>
-              {showHomeVisitorActions ? renderHomeVisitorActions(true) : (
+              {isNavigationLoading ? renderAccountActionSkeleton() : showHomeVisitorActions ? renderHomeVisitorActions(true) : (
                 <div ref={mobileProfileMenuRef} className="relative">
                   <button
                     type="button"
@@ -733,30 +766,32 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
                 </form>
               </div>
             </div>
-            <nav aria-label="Navegação principal" className="fixed inset-x-0 top-[68px] z-20 h-12 overflow-x-auto border-b border-slate-200 bg-white no-scrollbar dark:border-slate-800 dark:bg-slate-900 md:static md:z-auto md:h-auto md:overflow-visible md:px-6 lg:px-8">
-              <div className="relative mx-auto flex h-12 w-max min-w-full items-center gap-5 px-5 md:h-[54px] md:w-full md:min-w-0 md:max-w-7xl md:gap-6 md:border-t md:border-slate-100 md:px-0 dark:md:border-slate-800">
-                <div className="flex shrink-0 items-center gap-5 min-[851px]:hidden">
-                  {navItems.map((item) => (
-                    <div key={`mobile-${item.path}`}>{renderTopNavigationItem(item)}</div>
-                  ))}
-                </div>
-                {primaryNavItems.map((item) => (
-                  <div key={`desktop-${item.path}`} className="hidden min-[851px]:block">{renderTopNavigationItem(item)}</div>
-                ))}
-                <details className="group relative ml-auto hidden shrink-0 min-[851px]:block">
-                  <summary className="inline-flex h-[54px] list-none items-center gap-2 border-b-2 border-transparent px-0 text-[13px] font-medium text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white">
-                    <MoreHorizontal size={18} aria-hidden="true" /> Mais <ChevronDown size={14} aria-hidden="true" />
-                  </summary>
-                  <div className="absolute right-0 top-full z-50 mt-1 min-w-48 rounded-md border border-slate-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-                    {moreNavItems.map((item) => (
-                      <div key={item.path} className="[&>a]:h-9 [&>a]:w-full [&>a]:justify-start [&>a]:rounded [&>a]:px-2 [&>a]:text-[13px]">
-                        {renderTopNavigationItem(item)}
-                      </div>
+            <nav aria-label="Navegação principal" aria-busy={isNavigationLoading} className="fixed inset-x-0 top-[68px] z-20 h-12 overflow-x-auto border-b border-slate-200 bg-white no-scrollbar dark:border-slate-800 dark:bg-slate-900 md:static md:z-auto md:h-auto md:overflow-visible md:px-6 lg:px-8">
+              {isNavigationLoading ? renderTopNavigationSkeleton() : (
+                <div className="relative mx-auto flex h-12 w-max min-w-full items-center gap-5 px-5 md:h-[54px] md:w-full md:min-w-0 md:max-w-7xl md:gap-6 md:border-t md:border-slate-100 md:px-0 dark:md:border-slate-800">
+                  <div className="flex shrink-0 items-center gap-5 min-[851px]:hidden">
+                    {navItems.map((item) => (
+                      <div key={`mobile-${item.path}`}>{renderTopNavigationItem(item)}</div>
                     ))}
-                    {renderMoreMenuActions()}
                   </div>
-                </details>
-              </div>
+                  {primaryNavItems.map((item) => (
+                    <div key={`desktop-${item.path}`} className="hidden min-[851px]:block">{renderTopNavigationItem(item)}</div>
+                  ))}
+                  <details className="group relative ml-auto hidden shrink-0 min-[851px]:block">
+                    <summary className="inline-flex h-[54px] list-none items-center gap-2 border-b-2 border-transparent px-0 text-[13px] font-medium text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white">
+                      <MoreHorizontal size={18} aria-hidden="true" /> Mais <ChevronDown size={14} aria-hidden="true" />
+                    </summary>
+                    <div className="absolute right-0 top-full z-50 mt-1 min-w-48 rounded-md border border-slate-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                      {moreNavItems.map((item) => (
+                        <div key={item.path} className="[&>a]:h-9 [&>a]:w-full [&>a]:justify-start [&>a]:rounded [&>a]:px-2 [&>a]:text-[13px]">
+                          {renderTopNavigationItem(item)}
+                        </div>
+                      ))}
+                      {renderMoreMenuActions()}
+                    </div>
+                  </details>
+                </div>
+              )}
             </nav>
           </>
         )}
@@ -938,7 +973,7 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
                 {theme === 'light' ? <Moon size={19} aria-hidden="true" /> : <Sun size={19} aria-hidden="true" />}
               </button>
 
-              {showHomeVisitorActions ? renderHomeVisitorActions() : (
+              {isNavigationLoading ? renderAccountActionSkeleton() : showHomeVisitorActions ? renderHomeVisitorActions() : (
                 <div ref={profileMenuRef} className="relative ml-1 flex items-center gap-[18px]">
                   <button
                     type="button"
