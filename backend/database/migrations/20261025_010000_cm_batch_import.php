@@ -250,11 +250,11 @@ return static function (PDO $db): void {
     if ((int) $sourceMapConflicts->fetchColumn() > 0) {
         throw new RuntimeException('O mapa de identidades externas ja aponta para conteudos diferentes; corrija antes da migration cm-batch.');
     }
-    $db->exec("INSERT INTO question_source_identities
+    $db->exec("INSERT IGNORE INTO question_source_identities
         (question_id, source_provider, source_external_id, source_version)
         SELECT id, source_provider, source_external_id, ''
         FROM questions
         WHERE source_provider IS NOT NULL AND TRIM(source_provider) <> ''
           AND source_external_id IS NOT NULL AND TRIM(source_external_id) <> ''
-        ON DUPLICATE KEY UPDATE question_id = VALUES(question_id)");
+    ");
 };

@@ -53,6 +53,10 @@ if (preg_match('/\bCONSTRAINT\s+[a-z_]+\s+FOREIGN\s+KEY|\bREFERENCES\s+[a-z_]+\s
 if (str_contains($migration, 'uq_question_prova_source_question')) {
     throw new RuntimeException('Source position uniqueness already guards this identity; avoid the oversized redundant composite index.');
 }
+if (!str_contains($migration, 'INSERT IGNORE INTO question_source_identities')
+    || str_contains($migration, 'ON DUPLICATE KEY UPDATE question_id')) {
+    throw new RuntimeException('Legacy source identity backfill must be insert-only after conflict checks.');
+}
 foreach (['Apenas validar', 'Salvar prévia para revisão', 'nenhum item será publicado', 'admin/cm_batch.php'] as $needle) {
     if (!str_contains($adminPanel, $needle)) {
         throw new RuntimeException('Missing admin preview contract: ' . $needle);
