@@ -2251,6 +2251,27 @@ class QuestionsRepository
         return is_array($row) ? $row : null;
     }
 
+    public function findCmBatchExistingQuestion(array $identity): ?array
+    {
+        $candidates = array_values(array_filter([
+            $this->findQuestionByImportFingerprint((string) ($identity['import_fingerprint'] ?? '')),
+            $this->findQuestionBySourceIdentity((string) ($identity['source_provider'] ?? ''), (string) ($identity['source_external_id'] ?? '')),
+            $this->findQuestionByExamPosition((string) ($identity['source_exam_key'] ?? ''), (string) ($identity['source_question_number'] ?? '')),
+        ], 'is_array'));
+        $ids = array_values(array_unique(array_map(static fn(array $row): int => (int) ($row['id'] ?? 0), $candidates)));
+        if (count($ids) > 1) {
+            throw new DomainException('Identidades de origem e fingerprint apontam para questoes canonicas diferentes.');
+        }
+        $existing = $candidates[0] ?? null;
+        if ($existing && !hash_equals(
+            strtolower(trim((string) ($existing['import_fingerprint'] ?? ''))),
+            strtolower((string) ($identity['import_fingerprint'] ?? ''))
+        )) {
+            throw new DomainException('O ID de origem ou a posicao ja existe com conteudo divergente.');
+        }
+        return $existing;
+    }
+
     public function syncQuestionSourceIdentity(
         int $questionId,
         string $provider,
