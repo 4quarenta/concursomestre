@@ -2089,7 +2089,7 @@ const Practice: React.FC<PracticeProps> = ({
                 aria-controls="practice-advanced-filters"
                 className={styles.filterToggle}
               >
-                <SlidersHorizontal size={16} />
+                <SlidersHorizontal size={16} className={styles.filterToggleIcon} aria-hidden="true" />
                 <span>Todos os filtros</span>
                 <span className={styles.filterCount}>10</span>
                 {filtersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}

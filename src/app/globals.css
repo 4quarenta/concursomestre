@@ -654,3 +654,56 @@
     white-space: normal;
   }
 }
+
+/* Public homepage surfaces follow the same compact platform treatment in both themes. */
+.dark .cm-landing-theme {
+  color: #e2e8f0;
+  --cm-theme-page: #0f172a !important;
+  --cm-theme-hero: #0f172a !important;
+  --cm-theme-accent-soft: #24234a !important;
+  --cm-theme-border: #334155 !important;
+}
+
+.dark .cm-landing-theme [class~="bg-white"] {
+  background-color: #111b30;
+}
+
+.dark .cm-landing-theme [class~="bg-slate-50"] {
+  background-color: #0b1220;
+}
+
+.dark .cm-landing-theme [class~="bg-indigo-50"] {
+  background-color: #24234a;
+}
+
+.dark .cm-landing-theme [class~="bg-[#f0edff]"],
+.dark .cm-landing-theme [class~="bg-[#edeaff]"],
+.dark .cm-landing-theme [class~="bg-indigo-100"] {
+  background-color: #24234a;
+}
+
+.dark .cm-landing-theme [class~="text-[#07103a]"],
+.dark .cm-landing-theme [class~="text-[#1d284f]"],
+.dark .cm-landing-theme [class~="text-slate-900"],
+.dark .cm-landing-theme [class~="text-slate-800"] {
+  color: #e2e8f0;
+}
+
+.dark .cm-landing-theme [class~="text-slate-700"],
+.dark .cm-landing-theme [class~="text-slate-600"] {
+  color: #cbd5e1;
+}
+
+.dark .cm-landing-theme [class~="text-slate-500"] {
+  color: #94a3b8;
+}
+
+.dark .cm-landing-theme [class~="border-slate-200"],
+.dark .cm-landing-theme [class~="border-indigo-100"] {
+  border-color: #334155;
+}
+
+.cm-landing-theme main :not([data-platform-mockup] *)[class~="rounded-2xl"],
+.cm-landing-theme main :not([data-platform-mockup] *)[class~="rounded-xl"] {
+  border-radius: 6px;
+}
