@@ -12,17 +12,26 @@
 
 'use client';
 
-import React, { FormEvent, useRef, useState } from 'react';
+import React, { FormEvent, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { AlertCircle, Eye, EyeOff, Loader2, LogIn, Lock, Mail, Sparkles, UserPlus, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Script from 'next/script';
 import { useAuth } from '@providers/AuthProvider';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
-import { readApiErrorMessage } from '@services/api';
+import { apiClient, ENDPOINTS, readApiErrorMessage } from '@services/api';
 import { authFlowService } from '@services/auth';
 import { isCanonicalSessionData } from '@services/auth/session';
 import { createSubmissionGate } from '@services/auth/submissionGate';
 import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
+import { hasInvalidGoogleClientIdCandidate, normalizeGoogleClientId } from '@/config/googleAuth';
+
+type GoogleCredentialResponse = { credential?: string };
+type GoogleIdentityClient = {
+    initialize: (options: { client_id: string; callback: (response: GoogleCredentialResponse) => void; context?: 'signin'; ux_mode?: 'popup'; auto_select?: boolean }) => void;
+    renderButton: (element: HTMLElement, options: { theme?: 'outline' | 'filled_black'; size?: 'large'; type?: 'standard'; shape?: 'rectangular'; text?: 'signin_with'; logo_alignment?: 'left'; width?: number }) => void;
+};
+type GoogleWindow = Window & { google?: { accounts?: { id?: GoogleIdentityClient } } };
 
 interface AuthModalProps {
     isOpen: boolean;
@@ -39,7 +48,12 @@ const InlineLoginForm: React.FC<{ onClose: () => void; title: string; descriptio
     const systemSettings = useAppConfigStore((state) => state.systemSettings);
     const recaptchaEnabled = Boolean(systemSettings?.recaptchaEnabled && systemSettings?.recaptchaSiteKey);
     const { executeRecaptcha } = useRecaptchaV3({ enabled: recaptchaEnabled, siteKey: systemSettings?.recaptchaSiteKey });
+    const googleClientRaw = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || systemSettings?.googleAuthClientId || '';
+    const googleClientId = normalizeGoogleClientId(googleClientRaw);
+    const googleEnabled = Boolean(googleClientId && !hasInvalidGoogleClientIdCandidate(googleClientRaw)
+        && (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || systemSettings?.hasGoogleAuthClientConfigured));
     const submissionGateRef = useRef(createSubmissionGate());
+    const googleButtonRef = useRef<HTMLDivElement>(null);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [twoFactorCode, setTwoFactorCode] = useState('');
@@ -47,7 +61,68 @@ const InlineLoginForm: React.FC<{ onClose: () => void; title: string; descriptio
     const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [googleReady, setGoogleReady] = useState(false);
+    const [googleLoading, setGoogleLoading] = useState(false);
     const [error, setError] = useState('');
+
+    useEffect(() => {
+        const identity = (window as GoogleWindow).google?.accounts?.id;
+        const container = googleButtonRef.current;
+        if (!googleReady || !googleEnabled || !identity || !container) return;
+
+        container.innerHTML = '';
+        identity.initialize({
+            client_id: googleClientId,
+            context: 'signin',
+            ux_mode: 'popup',
+            auto_select: false,
+            callback: (response) => {
+                const credential = response.credential;
+                if (!credential) {
+                    setError('Não foi possível ler a resposta do Google.');
+                    return;
+                }
+
+                setError('');
+                setGoogleLoading(true);
+                void apiClient.post<{
+                    success?: boolean;
+                    message?: string;
+                    data?: { require2FA?: boolean; email?: string; token?: string | null } & Record<string, unknown>;
+                }>(ENDPOINTS.auth.google, { credential, createIfMissing: false })
+                    .then(async (response) => {
+                        const result = response as unknown as {
+                            success?: boolean;
+                            message?: string;
+                            data?: { require2FA?: boolean; email?: string; token?: string | null } & Record<string, unknown>;
+                        };
+                        if (!result.success || !result.data) throw new Error(result.message || 'Não foi possível entrar com Google.');
+                        if (result.data.require2FA) {
+                            setTwoFactorEmail(result.data.email || '');
+                            setRequiresTwoFactor(true);
+                            return;
+                        }
+                        const token = result.data.token;
+                        if (!isCanonicalSessionData(result.data)) throw new Error('A resposta de autenticação não trouxe uma sessão válida.');
+                        await login(result.data, token);
+                        onClose();
+                    })
+                    .catch((authError: unknown) => setError(readApiErrorMessage(authError, 'Não foi possível entrar com Google.')))
+                    .finally(() => setGoogleLoading(false));
+            },
+        });
+        identity.renderButton(container, {
+            theme: document.documentElement.classList.contains('dark') ? 'filled_black' : 'outline',
+            size: 'large',
+            type: 'standard',
+            shape: 'rectangular',
+            text: 'signin_with',
+            logo_alignment: 'left',
+            width: Math.min(container.clientWidth || 360, 400),
+        });
+
+        return () => { container.innerHTML = ''; };
+    }, [googleClientId, googleEnabled, googleReady, login, onClose]);
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -96,6 +171,9 @@ const InlineLoginForm: React.FC<{ onClose: () => void; title: string; descriptio
                     {requiresTwoFactor ? 'Confirme o código enviado para sua conta.' : description}
                 </p>
             </div>
+            {googleEnabled && (
+                <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" onReady={() => setGoogleReady(true)} />
+            )}
             <form className="space-y-4" onSubmit={handleSubmit}>
                 {requiresTwoFactor ? (
                     <label className="block text-left text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -134,6 +212,17 @@ const InlineLoginForm: React.FC<{ onClose: () => void; title: string; descriptio
                 <button type="submit" disabled={isLoading} className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
                     {isLoading ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}{requiresTwoFactor ? 'Confirmar e entrar' : 'Entrar na minha conta'}
                 </button>
+                {googleEnabled && !requiresTwoFactor && (
+                    <>
+                        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+                            <span className="h-px bg-slate-200 dark:bg-slate-700" />ou<span className="h-px bg-slate-200 dark:bg-slate-700" />
+                        </div>
+                        <div className="relative min-h-11">
+                            {googleLoading && <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-white/80 dark:bg-slate-900/80"><Loader2 size={18} className="animate-spin text-indigo-600" /></div>}
+                            <div ref={googleButtonRef} className="flex min-h-11 w-full justify-center" />
+                        </div>
+                    </>
+                )}
                 <button type="button" onClick={() => { onClose(); router.push('/auth?mode=signup'); }}
                     className="flex h-11 w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-800 transition hover:border-indigo-400 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-indigo-500 dark:hover:text-indigo-300">
                     <UserPlus size={18} className="text-indigo-600 dark:text-indigo-400" />Criar conta grátis
