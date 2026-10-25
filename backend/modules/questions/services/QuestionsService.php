@@ -25,7 +25,7 @@ require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
 require_once __DIR__ . '/../../seo/taxonomy/KnowledgeTaxonomyHierarchyValidator.php';
 require_once __DIR__ . '/../../filters/professional/ProfessionalTaxonomyReadinessValidator.php';
 require_once __DIR__ . '/../../ingestion/domain/BrowserFixturePublicationPolicy.php';
-require_once __DIR__ . 'CmBatchDraftQuestionImporter.php';
+require_once __DIR__ . '/CmBatchDraftQuestionImporter.php';
 
 final class GranTaxonomyNotSynchronizedException extends InvalidArgumentException
 {
