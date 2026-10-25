@@ -325,7 +325,7 @@ const PlatformMockup = () => {
 
     <div className="absolute -bottom-8 left-2 w-36 rounded-[1.6rem] border-[8px] border-[var(--cm-theme-device-frame,var(--cm-theme-header-ink))] bg-[var(--cm-theme-device-frame,var(--cm-theme-header-ink))] shadow-2xl shadow-[var(--cm-theme-accent-soft)] sm:left-0 sm:w-48 lg:-left-10 lg:bottom-2">
       <div className="rounded-[1rem] bg-[var(--cm-theme-page)] p-4">
-        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-[var(--cm-theme-header-ink)]" />
+        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-[var(--cm-theme-device-frame,var(--cm-theme-header-ink))]" />
         <p className="text-[11px] font-black text-[var(--cm-theme-header-ink)]">Plano de estudos</p>
         <div className="mt-4 space-y-3">
           {content.mobileItems.map(([title, label, progress]) => (

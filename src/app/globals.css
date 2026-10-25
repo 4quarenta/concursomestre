@@ -681,6 +681,10 @@
   background-color: #24234a;
 }
 
+.dark .cm-landing-theme [class~="bg-[#f3f1ff]"] {
+  background-color: #1d1b3a;
+}
+
 .dark .cm-landing-theme [class~="bg-[#f0edff]"],
 .dark .cm-landing-theme [class~="bg-[#edeaff]"],
 .dark .cm-landing-theme [class~="bg-indigo-100"] {
@@ -701,6 +705,14 @@
 
 .dark .cm-landing-theme [class~="text-slate-500"] {
   color: #94a3b8;
+}
+
+.dark .cm-landing-theme [class~="text-[#684cff]"],
+.dark .cm-landing-theme [class~="text-[var(--cm-theme-accent)]"],
+.dark .cm-landing-theme [class~="group-hover:text-[#684cff]"]:hover,
+.dark .cm-landing-theme [class~="hover:text-[#684cff]"]:hover,
+.dark .cm-landing-theme [class~="hover:text-[#4f39d4]"]:hover {
+  color: #a99aff;
 }
 
 .dark .cm-landing-theme [class~="border-slate-200"],
