@@ -5,6 +5,8 @@ declare(strict_types=1);
 /**
  * Additive control-plane and occurrence metadata for cm-batch.v1 imports.
  * Canonical question content remains in the existing questions tables.
+ * Foreign keys are deferred until the historical question backfill is complete;
+ * unique keys and application-level identity checks remain active in the interim.
  * Data-bearing rollback is intentionally not automated; it requires an approved
  * export/retention decision before any import job records can be removed.
  */
@@ -89,8 +91,7 @@ return static function (PDO $db): void {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uq_cm_batch_item (job_id, entity_type, external_key),
         KEY idx_cm_batch_item_status (job_id, status, id),
-        KEY idx_cm_batch_item_content (entity_type, content_hash),
-        CONSTRAINT fk_cm_batch_item_job FOREIGN KEY (job_id) REFERENCES cm_batch_import_jobs(job_id) ON DELETE RESTRICT
+        KEY idx_cm_batch_item_content (entity_type, content_hash)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $db->exec("CREATE TABLE IF NOT EXISTS cm_batch_exam_source_identities (
@@ -102,8 +103,7 @@ return static function (PDO $db): void {
         created_by_job_id CHAR(36) NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uq_cm_batch_exam_source_identity (source_provider, source_external_id, edition_key),
-        KEY idx_cm_batch_exam_source_exam (exam_id),
-        CONSTRAINT fk_cm_batch_exam_source_exam FOREIGN KEY (exam_id) REFERENCES provas(id) ON DELETE CASCADE
+        KEY idx_cm_batch_exam_source_exam (exam_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $db->exec("CREATE TABLE IF NOT EXISTS cm_batch_taxonomy_resolutions (
@@ -124,8 +124,7 @@ return static function (PDO $db): void {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uq_cm_batch_taxonomy_external (job_id, taxonomy_type, provider, external_id),
         KEY idx_cm_batch_taxonomy_canonical (canonical_filter_id),
-        KEY idx_cm_batch_taxonomy_status (job_id, resolution_status),
-        CONSTRAINT fk_cm_batch_taxonomy_job FOREIGN KEY (job_id) REFERENCES cm_batch_import_jobs(job_id) ON DELETE RESTRICT
+        KEY idx_cm_batch_taxonomy_status (job_id, resolution_status)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $db->exec("CREATE TABLE IF NOT EXISTS cm_batch_field_audit (
@@ -144,8 +143,7 @@ return static function (PDO $db): void {
         rolled_back_at DATETIME NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         KEY idx_cm_batch_audit_entity (entity_type, canonical_entity_id, field_name),
-        KEY idx_cm_batch_audit_job (job_id, status, id),
-        CONSTRAINT fk_cm_batch_audit_job FOREIGN KEY (job_id) REFERENCES cm_batch_import_jobs(job_id) ON DELETE RESTRICT
+        KEY idx_cm_batch_audit_job (job_id, status, id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     if (!$tableExists('questions') || !$tableExists('question_provas') || !$tableExists('prova_cadernos')) {
@@ -203,9 +201,7 @@ return static function (PDO $db): void {
             source_provider, source_exam_external_id, source_booklet_key, source_version,
             source_question_external_id, question_number
         ),
-        KEY idx_question_prova_source_occurrence (question_prova_id),
-        CONSTRAINT fk_question_prova_source_occurrence FOREIGN KEY (question_prova_id)
-            REFERENCES question_provas(id) ON DELETE CASCADE
+        KEY idx_question_prova_source_occurrence (question_prova_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $db->exec("CREATE TABLE IF NOT EXISTS question_prova_answer_history (
@@ -220,9 +216,7 @@ return static function (PDO $db): void {
         created_by_job_id CHAR(36) NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         KEY idx_question_prova_answer_history (question_prova_id, created_at),
-        UNIQUE KEY uq_question_prova_answer_snapshot (question_prova_id, answer_snapshot_key),
-        CONSTRAINT fk_question_prova_answer_history FOREIGN KEY (question_prova_id)
-            REFERENCES question_provas(id) ON DELETE CASCADE
+        UNIQUE KEY uq_question_prova_answer_snapshot (question_prova_id, answer_snapshot_key)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $db->exec("CREATE TABLE IF NOT EXISTS question_source_identities (
@@ -234,9 +228,7 @@ return static function (PDO $db): void {
         created_by_job_id CHAR(36) NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uq_question_source_identity (source_provider, source_external_id),
-        KEY idx_question_source_question (question_id),
-        CONSTRAINT fk_question_source_identity_question FOREIGN KEY (question_id)
-            REFERENCES questions(id) ON DELETE CASCADE
+        KEY idx_question_source_question (question_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $duplicateSources = (int) $db->query(

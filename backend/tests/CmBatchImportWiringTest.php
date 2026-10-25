@@ -47,6 +47,9 @@ if (!str_contains($questionRepository, "\$answerKey !== '' && \$answerCanBecomeA
 if (preg_match('/CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+questions\b/i', $migration) === 1) {
     throw new RuntimeException('CM Batch migration must not create a second canonical question table.');
 }
+if (preg_match('/\bCONSTRAINT\s+[a-z_]+\s+FOREIGN\s+KEY|\bREFERENCES\s+[a-z_]+\s*\(/i', $migration) === 1) {
+    throw new RuntimeException('Temporary CM Batch migration must defer foreign keys until historical backfill is complete.');
+}
 foreach (['Apenas validar', 'Salvar prévia para revisão', 'nenhum item será publicado', 'admin/cm_batch.php'] as $needle) {
     if (!str_contains($adminPanel, $needle)) {
         throw new RuntimeException('Missing admin preview contract: ' . $needle);
