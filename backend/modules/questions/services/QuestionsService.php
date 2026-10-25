@@ -25,6 +25,9 @@ require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
 require_once __DIR__ . '/../../seo/taxonomy/KnowledgeTaxonomyHierarchyValidator.php';
 require_once __DIR__ . '/../../filters/professional/ProfessionalTaxonomyReadinessValidator.php';
 require_once __DIR__ . '/../../ingestion/domain/BrowserFixturePublicationPolicy.php';
+require_once __DIR__ . '/../../ingestion/domain/CmBatchQuestionIdentity.php';
+require_once __DIR__ . '/../../ingestion/domain/CmBatchTaxonomyPolicy.php';
+require_once __DIR__ . '/../../ingestion/domain/CmBatchHtmlPolicy.php';
 
 final class GranTaxonomyNotSynchronizedException extends InvalidArgumentException
 {
@@ -854,7 +857,122 @@ class QuestionsService
      *
      * @since 1.0.0
      */
-    public function bulkImportQuestions(string $authenticatedUserId, bool $isAdmin, array $payload, ?array $proofPdfFile = null): array
+    /** Internal worker entry: caller owns transaction, approval and archive validation. */
+    public function importCmBatchDraftQuestion(
+        string $actorId,
+        string $jobId,
+        int $examId,
+        array $question,
+        array $contexts,
+        array $verifiedAssetHashes,
+        array $resolvedFilterIds,
+        array $occurrence
+    ): array {
+        if (!$this->db->inTransaction()) throw new LogicException('Importacao CM Batch exige transacao ativa.');
+        $fingerprint = CmBatchQuestionIdentity::fingerprint($question, $contexts, $verifiedAssetHashes);
+        $identityLock=$this->db->prepare('INSERT IGNORE INTO cm_batch_identity_locks (identity_key) VALUES (:key)');
+        $identityLock->execute([':key'=>$fingerprint]);
+        $identityLock=$this->db->prepare('SELECT identity_key FROM cm_batch_identity_locks WHERE identity_key=:key FOR UPDATE');
+        $identityLock->execute([':key'=>$fingerprint]);
+        $this->canonicalRepository->assertSchemaReady();
+        $lookup = $this->db->prepare('SELECT id,import_fingerprint FROM questions WHERE import_fingerprint=:fingerprint FOR UPDATE');
+        $lookup->execute([':fingerprint'=>$fingerprint]);
+        $existing = $lookup->fetch(PDO::FETCH_ASSOC);
+        $provider = strtolower(trim((string)($occurrence['provider'] ?? '')));
+        $externalId = trim((string)($occurrence['externalQuestionId'] ?? ''));
+        if ($externalId !== '') {
+            $lookup = $this->db->prepare('SELECT q.id,q.import_fingerprint FROM question_source_identities s JOIN questions q ON q.id=s.question_id WHERE s.source_provider=:provider AND s.source_external_id=:external FOR UPDATE');
+            $lookup->execute([':provider'=>$provider,':external'=>$externalId]);
+            $sourceMatch = $lookup->fetch(PDO::FETCH_ASSOC);
+            if ($provider === 'gran') {
+                $legacyLookup=$this->db->prepare("SELECT id,import_fingerprint FROM questions WHERE source_external_id=:external AND (source_provider='gran' OR source_provider IS NULL OR TRIM(source_provider)='') FOR UPDATE");
+                $legacyLookup->execute([':external'=>$externalId]);
+                $legacyRows=$legacyLookup->fetchAll(PDO::FETCH_ASSOC);
+                if(count($legacyRows)>1)throw new DomainException('O ID Gran aponta para mais de uma questao legada.');
+                $legacyMatch=$legacyRows[0]??null;
+                if($legacyMatch && $sourceMatch && (int)$legacyMatch['id']!==(int)$sourceMatch['id'])throw new DomainException('O ID Gran aponta para questoes canonicas divergentes.');
+                $sourceMatch=$legacyMatch?:$sourceMatch;
+            }
+            if ($sourceMatch && (!hash_equals((string)$sourceMatch['import_fingerprint'],$fingerprint) || ($existing && (int)$existing['id']!==(int)$sourceMatch['id']))) {
+                throw new DomainException('Identidade externa diverge do conteudo canonico.');
+            }
+            $existing = $sourceMatch ?: $existing;
+        }
+        $filters = [];
+        $allIds = [];
+        $readFilter = $this->db->prepare('SELECT id,type,name,slug,parent_id,taxonomy_level FROM filters WHERE id=:id');
+        foreach ($resolvedFilterIds as $category=>$ids) {
+            [$type,$level] = CmBatchTaxonomyPolicy::definition($category === 'levels' ? 'educationLevels' : $category);
+            foreach ($ids as $id) {
+                if (!is_int($id) || $id<1) throw new InvalidArgumentException('ID canonico de taxonomia invalido.');
+                $readFilter->execute([':id'=>$id]);
+                $filter = $readFilter->fetch(PDO::FETCH_ASSOC);
+                if (!$filter || $filter['type']!==$type || ($level!==null && $filter['taxonomy_level']!==$level)) throw new DomainException('Categoria canonica divergente.');
+                $filters[$category][]=['id'=>$id,'name'=>$filter['name'],'label'=>$filter['name'],'slug'=>$filter['slug'],'parentId'=>$filter['parent_id'],'taxonomyLevel'=>$filter['taxonomy_level']];
+                $allIds[$id]=true;
+            }
+        }
+        if ($existing) {
+            $questionId=(int)$existing['id'];
+            $action='link_existing_question';
+        } else {
+            // Media materialization must complete before this persistence boundary.
+            $mediaUrls=[];
+            foreach ($question['assets'] ?? [] as $asset) {
+                $url=(string)($asset['url']??'');
+                if (!preg_match('~^/api/admin/cm_batch_media\.php\?sha=[a-f0-9]{64}$~',$url)) throw new DomainException('Midia precisa estar no storage privado controlado.');
+                $mediaUrls[]=$url;
+            }
+            foreach (['statement','supportText','reference'] as $field) CmBatchHtmlPolicy::assertSafe((string)($question['content'][$field]??''),$mediaUrls);
+            foreach ($question['alternatives'] ?? [] as $alternative) CmBatchHtmlPolicy::assertSafe((string)($alternative['text']??''),$mediaUrls);
+            foreach ($question['editorial'] ?? [] as $editorial) CmBatchHtmlPolicy::assertSafe((string)($editorial['body']??''),$mediaUrls);
+            $contextKey=(string)($question['source']['contextTempId']??'');
+            $contextId=null;
+            if ($contextKey!=='') {
+                $matches=array_values(array_filter($contexts,static fn(array $context):bool => ($context['tempId']??'')===$contextKey));
+                if(count($matches)!==1)throw new DomainException('Contexto ausente ou ambiguo.');
+                $context=$matches[0];
+                CmBatchHtmlPolicy::assertSafe((string)($context['body']??''),$mediaUrls);
+                if(!empty($context['assets']))throw new DomainException('Assets do contexto precisam de materializacao propria.');
+                $context['tempId']='cm_'.hash('sha256',$examId.':'.$fingerprint.':'.$contextKey);
+                $context['provaId']=$examId;
+                $context['source']=[];
+                $contextId=$this->canonicalRepository->saveContext($context,$actorId);
+            }
+            $question['id']=null;
+            $question['source']=['origin'=>'exam','examId'=>$examId,'questionNumber'=>(int)$occurrence['questionNumber'],'sourcePage'=>$occurrence['sourcePage']??null];
+            $question['filters']=$filters;
+            $question['canonicalContextId']=$contextId;
+            $question=$this->forceImportedQuestionDraft($question);
+            foreach($question['editorial'] ?? [] as $index=>$entry) $question['editorial'][$index]['status']='draft';
+            $question['answer']=['mode'=>'single','raw'=>'','correctAlternativeTempIds'=>[]];
+            $validated=$this->validator->validateSavePayload($question);
+            $validated['id']=null;
+            $validated['taxonomies']=[];
+            $validated['import_fingerprint']=$fingerprint;
+            $validated['source_provider']=$provider==='gran' && $externalId!=='' ? 'gran' : null;
+            $validated['source_external_id']=$provider==='gran' && $externalId!=='' ? $externalId : null;
+            $validated['source_exam_key']=null;
+            $validated['source_question_number']=(string)$occurrence['questionNumber'];
+            $validated['cm_batch_unverified_answer']=true;
+            [$questionId]=$this->persistValidatedQuestion($validated,$actorId);
+            $questionId=(int)$questionId;
+            $action='create_question';
+        }
+        foreach(array_keys($allIds) as $id)$this->repository->linkQuestionFilter($questionId,$id);
+        $this->repository->syncQuestionSourceIdentity($questionId,$provider,$externalId,(string)($occurrence['version']??''),$jobId);
+        $occurrence['answerStatus']='unverified';
+        $occurrenceId=$this->repository->syncCmBatchQuestionOccurrence($questionId,$examId,$occurrence,$jobId);
+        return ['canonicalId'=>$questionId,'occurrenceId'=>$occurrenceId,'action'=>$action];
+    }
+
+    public function bulkImportQuestions(
+        string $authenticatedUserId,
+        bool $isAdmin,
+        array $payload,
+        ?array $proofPdfFile = null,
+        array $options = []
+    ): array
     {
         $this->assertAdmin($authenticatedUserId, $isAdmin);
 
@@ -864,6 +982,14 @@ class QuestionsService
         $this->canonicalRepository->assertSchemaReady();
 
         $questions = is_array($payload['questions'] ?? null) ? $payload['questions'] : [];
+        $draftOnly = ($options['publicationMode'] ?? '') === 'draft';
+        $trustedFingerprints = is_array($options['trustedFingerprints'] ?? null)
+            ? $options['trustedFingerprints']
+            : [];
+        $occurrencesByTempId = is_array($options['occurrencesByTempId'] ?? null)
+            ? $options['occurrencesByTempId']
+            : [];
+        $batchJobId = trim((string) ($options['jobId'] ?? ''));
 
         $focus = $this->normalizeBulkImportFocus($payload['focus'] ?? []);
         $questionFocuses = $this->collectBulkQuestionFocuses($questions);
@@ -1072,17 +1198,30 @@ class QuestionsService
                 $question['tiposProva'] = $this->mergeTaxonomyList($question['tiposProva'] ?? [], $this->taxonomyPayloadFromFilter('tipo_prova', $examRecord['tipo_prova_id'], $examPayload['examType'] ?? $examPayload['tipoProva'] ?? ''));
                 $question['anos'] = $question['anos'] ?? [(int) $examRecord['ano']];
 
-                // Esta rota representa a confirmacao de publicacao do lote.
-                // Revisao pendente continua em `review`, mas nunca transforma
-                // uma questao efetivamente publicada em rascunho privado.
-                $question = $this->forceImportedQuestionPublication($question);
+                // The legacy route keeps its publication contract; cm-batch may
+                // explicitly persist review-pending items as private drafts.
+                $question = $draftOnly
+                    ? $this->forceImportedQuestionDraft($question)
+                    : $this->forceImportedQuestionPublication($question);
                 $question = $this->persistQuestionRichTextImages($question);
                 $validatedQuestion = $this->validator->validateSavePayload(
                     $question,
                     $contextEvidenceByTempId[$contextTempId] ?? null
                 );
                 $importIdentity = $this->buildImportedQuestionIdentity($validatedQuestion, $examRecord);
-                $batchDuplicateKey = $this->buildImportedQuestionBatchKey($importIdentity);
+                $tempId = trim((string) ($question['tempId'] ?? ''));
+                if ($draftOnly && isset($trustedFingerprints[$tempId])) {
+                    $trustedFingerprint = strtolower(trim((string) $trustedFingerprints[$tempId]));
+                    if (preg_match('/^[a-f0-9]{64}$/', $trustedFingerprint) !== 1) {
+                        throw new InvalidArgumentException('Fingerprint canonico calculado pelo servidor invalido.');
+                    }
+                    $importIdentity['import_fingerprint'] = $trustedFingerprint;
+                }
+                $batchDuplicateKey = $draftOnly
+                    ? (trim((string) $importIdentity['source_question_number']) !== ''
+                        ? 'position:' . $importIdentity['source_exam_key'] . ':' . $importIdentity['source_question_number']
+                        : 'fingerprint:' . $importIdentity['import_fingerprint'])
+                    : $this->buildImportedQuestionBatchKey($importIdentity);
                 if (isset($seenImportKeys[$batchDuplicateKey])) {
                     $duplicate = [
                         'reason' => 'duplicate_in_batch',
@@ -1102,24 +1241,83 @@ class QuestionsService
                 }
                 $seenImportKeys[$batchDuplicateKey] = true;
 
-                $existingQuestion = $this->repository->findQuestionByImportIdentity(
-                    $importIdentity['import_fingerprint'],
-                    $importIdentity['source_exam_key'],
-                    $importIdentity['source_question_number'],
-                    $importIdentity['source_provider'],
-                    $importIdentity['source_external_id']
-                );
+                if ($draftOnly) {
+                    $candidates = [
+                        $this->repository->findQuestionByImportFingerprint($importIdentity['import_fingerprint']),
+                        $this->repository->findQuestionBySourceIdentity(
+                            $importIdentity['source_provider'],
+                            $importIdentity['source_external_id']
+                        ),
+                        $this->repository->findQuestionByExamPosition(
+                            $importIdentity['source_exam_key'],
+                            $importIdentity['source_question_number']
+                        ),
+                    ];
+                    $candidates = array_values(array_filter($candidates, 'is_array'));
+                    $candidateIds = array_values(array_unique(array_map(
+                        static fn (array $candidate): int => (int) ($candidate['id'] ?? 0),
+                        $candidates
+                    )));
+                    if (count($candidateIds) > 1) {
+                        throw new DomainException('Identidades de origem e fingerprint apontam para questoes canonicas diferentes.');
+                    }
+                    $existingQuestion = $candidates[0] ?? null;
+                    if (is_array($existingQuestion)
+                        && !hash_equals(
+                            strtolower(trim((string) ($existingQuestion['import_fingerprint'] ?? ''))),
+                            strtolower((string) $importIdentity['import_fingerprint'])
+                        )) {
+                        throw new DomainException('O ID de origem ou a posicao ja existe com conteudo divergente.');
+                    }
+                } else {
+                    $existingQuestion = $this->repository->findQuestionByImportIdentity(
+                        $importIdentity['import_fingerprint'],
+                        $importIdentity['source_exam_key'],
+                        $importIdentity['source_question_number'],
+                        $importIdentity['source_provider'],
+                        $importIdentity['source_external_id']
+                    );
+                }
                 $updatingExistingQuestion = false;
                 if ($existingQuestion !== null) {
                     $existingStatus = strtolower(trim((string) ($existingQuestion['publish_status'] ?? '')));
-                    if (in_array($existingStatus, ['published', 'publicado'], true)) {
+                    if ($draftOnly || in_array($existingStatus, ['published', 'publicado'], true)) {
                         $duplicate = [
-                            'reason' => 'already_published',
+                            'reason' => $draftOnly ? 'exact_content_reused' : 'already_published',
                             'questionId' => $existingQuestion['id'] ?? null,
                             'questionNumber' => $importIdentity['source_question_number'],
                             'tempId' => $question['tempId'] ?? null,
                         ];
                         $duplicateSkipped[] = $duplicate;
+                        if (!$draftOnly) {
+                            $this->repository->syncPrimaryQuestionProva(
+                                (int) ($existingQuestion['id'] ?? 0),
+                                $examId,
+                                $importIdentity['source_question_number'] !== ''
+                                    ? (int) $importIdentity['source_question_number']
+                                    : null
+                            );
+                        }
+                        if ($draftOnly) {
+                            $this->repository->syncQuestionSourceIdentity(
+                                (int) ($existingQuestion['id'] ?? 0),
+                                $importIdentity['source_provider'],
+                                $importIdentity['source_external_id'],
+                                (string) ($options['sourceVersion'] ?? ''),
+                                $batchJobId !== '' ? $batchJobId : null
+                            );
+                        }
+                        if ($draftOnly && isset($occurrencesByTempId[$tempId]) && is_array($occurrencesByTempId[$tempId])) {
+                            $this->repository->syncCmBatchQuestionOccurrence(
+                                (int) ($existingQuestion['id'] ?? 0),
+                                $examId,
+                                $occurrencesByTempId[$tempId],
+                                $batchJobId !== '' ? $batchJobId : null
+                            );
+                        }
+                        if ($importIdentity['source_question_number'] !== '') {
+                            $createdQuestionIdBySourceNumber[$importIdentity['source_question_number']] = (int) ($existingQuestion['id'] ?? 0);
+                        }
                         $this->repository->recordExamQuestionImportTraceItem($importTraceId, [
                             'examId' => $examId,
                             'questionId' => $existingQuestion['id'] ?? null,
@@ -1141,6 +1339,23 @@ class QuestionsService
 
                 $validatedQuestion = array_merge($validatedQuestion, $importIdentity);
                 [$questionId, $createdTaxonomies] = $this->persistValidatedQuestion($validatedQuestion, $authenticatedUserId);
+                if ($draftOnly) {
+                    $this->repository->syncQuestionSourceIdentity(
+                        (int) $questionId,
+                        $importIdentity['source_provider'],
+                        $importIdentity['source_external_id'],
+                        (string) ($options['sourceVersion'] ?? ''),
+                        $batchJobId !== '' ? $batchJobId : null
+                    );
+                }
+                if ($draftOnly && isset($occurrencesByTempId[$tempId]) && is_array($occurrencesByTempId[$tempId])) {
+                    $this->repository->syncCmBatchQuestionOccurrence(
+                        (int) $questionId,
+                        $examId,
+                        $occurrencesByTempId[$tempId],
+                        $batchJobId !== '' ? $batchJobId : null
+                    );
+                }
                 $createdQuestionIds[] = $questionId;
                 if ($importIdentity['source_question_number'] !== '') {
                     $createdQuestionIdBySourceNumber[$importIdentity['source_question_number']] = (int) $questionId;
@@ -2472,7 +2687,7 @@ class QuestionsService
             }
         }
 
-        $answerIndex = $this->resolveCorrectAnswerIndex($data['itens'], $data['resposta']);
+        $answerIndex = !empty($data['cm_batch_unverified_answer']) ? -1 : $this->resolveCorrectAnswerIndex($data['itens'], $data['resposta']);
         $record = [
             'enunciado' => $data['enunciado'],
             'enunciado_clean' => $data['enunciado_clean'],
@@ -2913,6 +3128,29 @@ class QuestionsService
         $question['scheduledAt'] = null;
         $question['scheduled_at'] = null;
 
+        return $question;
+    }
+
+    private function forceImportedQuestionDraft(array $question): array
+    {
+        $publication = is_array($question['publication'] ?? null) ? $question['publication'] : [];
+        $question['publication'] = array_merge($publication, [
+            'status' => 'draft',
+            'visibility' => 'private',
+            'scheduledAt' => null,
+        ]);
+        $question['publishStatus'] = 'draft';
+        $question['publish_status'] = 'draft';
+        $question['visibilityStatus'] = 'private';
+        $question['visibility_status'] = 'private';
+        $question['scheduledAt'] = null;
+        $question['scheduled_at'] = null;
+        $review = is_array($question['review'] ?? null) ? $question['review'] : [];
+        $review['required'] = true;
+        if (!in_array(strtolower(trim((string) ($review['status'] ?? ''))), ['approved'], true)) {
+            $review['status'] = 'pending';
+        }
+        $question['review'] = $review;
         return $question;
     }
 

@@ -2202,6 +2202,369 @@ class QuestionsRepository
         return is_array($row) ? $row : null;
     }
 
+    public function findQuestionByImportFingerprint(string $fingerprint): ?array
+    {
+        $fingerprint = strtolower(trim($fingerprint));
+        if (preg_match('/^[a-f0-9]{64}$/', $fingerprint) !== 1) {
+            return null;
+        }
+        $this->ensurePublicationColumns();
+        $stmt = $this->db->prepare('SELECT * FROM questions WHERE import_fingerprint = :fingerprint LIMIT 1');
+        $stmt->execute([':fingerprint' => $fingerprint]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : null;
+    }
+
+    public function findQuestionBySourceIdentity(string $provider, string $externalId): ?array
+    {
+        $provider = strtolower(trim($provider));
+        $externalId = trim($externalId);
+        if ($provider === '' || $externalId === '') {
+            return null;
+        }
+        $this->ensurePublicationColumns();
+        $stmt = $this->db->prepare(
+            'SELECT * FROM questions
+             WHERE source_provider = :provider AND source_external_id = :external_id
+             LIMIT 1'
+        );
+        $stmt->execute([':provider' => $provider, ':external_id' => $externalId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : null;
+    }
+
+    public function findQuestionByExamPosition(string $examKey, string $questionNumber): ?array
+    {
+        $examKey = trim($examKey);
+        $questionNumber = trim($questionNumber);
+        if ($examKey === '' || $questionNumber === '') {
+            return null;
+        }
+        $this->ensurePublicationColumns();
+        $stmt = $this->db->prepare(
+            'SELECT * FROM questions
+             WHERE source_exam_key = :exam_key AND source_question_number = :question_number
+             LIMIT 1'
+        );
+        $stmt->execute([':exam_key' => $examKey, ':question_number' => $questionNumber]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : null;
+    }
+
+    public function syncQuestionSourceIdentity(
+        int $questionId,
+        string $provider,
+        string $externalId,
+        string $version = '',
+        ?string $jobId = null
+    ): void {
+        if ($questionId < 1 || trim($provider) === '' || trim($externalId) === '') {
+            return;
+        }
+        $provider = strtolower(trim($provider));
+        $externalId = trim($externalId);
+        $find = $this->db->prepare(
+            'SELECT question_id FROM question_source_identities
+             WHERE source_provider = :provider AND source_external_id = :external_id LIMIT 1'
+        );
+        $find->execute([':provider' => $provider, ':external_id' => $externalId]);
+        $existingQuestionId = $find->fetchColumn();
+        if ($existingQuestionId !== false) {
+            if ((int) $existingQuestionId !== $questionId) {
+                throw new DomainException('A identidade externa da questao ja esta vinculada a outro conteudo.');
+            }
+            return;
+        }
+        try {
+            $insert = $this->db->prepare(
+                'INSERT INTO question_source_identities
+                 (question_id, source_provider, source_external_id, source_version, created_by_job_id)
+                 VALUES (:question_id, :provider, :external_id, :version, :job_id)'
+            );
+            $insert->execute([
+                ':question_id' => $questionId,
+                ':provider' => $provider,
+                ':external_id' => $externalId,
+                ':version' => trim($version),
+                ':job_id' => $jobId,
+            ]);
+        } catch (PDOException $error) {
+            if ((string) $error->getCode() !== '23000') {
+                throw $error;
+            }
+            $find->execute([':provider' => $provider, ':external_id' => $externalId]);
+            if ((int) $find->fetchColumn() !== $questionId) {
+                throw new DomainException('Conflito concorrente na identidade externa da questao.', 0, $error);
+            }
+        }
+    }
+
+    /** @param array<string,mixed> $occurrence */
+    public function syncCmBatchQuestionOccurrence(
+        int $questionId,
+        int $examId,
+        array $occurrence,
+        ?string $jobId = null
+    ): int {
+        if ($questionId < 1 || $examId < 1) {
+            throw new InvalidArgumentException('Identidade canonica da ocorrencia invalida.');
+        }
+        if (!$this->db->inTransaction()) {
+            throw new LogicException('A ocorrencia CM Batch exige transacao ativa.');
+        }
+        // Serialize positions within the exam, including first insertion with no existing row.
+        $lockExam = $this->db->prepare('SELECT id FROM provas WHERE id = :id FOR UPDATE');
+        $lockExam->execute([':id' => $examId]);
+        if ($lockExam->fetchColumn() === false) throw new InvalidArgumentException('Prova inexistente.');
+        $provider = strtolower(trim((string) ($occurrence['provider'] ?? '')));
+        $externalExamId = trim((string) ($occurrence['externalExamId'] ?? ''));
+        $bookletKey = trim((string) ($occurrence['bookletKey'] ?? ''));
+        $version = trim((string) ($occurrence['version'] ?? ''));
+        $questionNumber = trim((string) ($occurrence['questionNumber'] ?? ''));
+        $externalQuestionId = trim((string) ($occurrence['externalQuestionId'] ?? ''));
+        if ($provider === '' || $externalExamId === '' || $questionNumber === '') {
+            throw new InvalidArgumentException('Fonte, prova de origem e numero da questao sao obrigatorios para a ocorrencia.');
+        }
+        if (!ctype_digit($questionNumber) || (int) $questionNumber < 1 || (int) $questionNumber > 2147483647) {
+            throw new InvalidArgumentException('Numero da ocorrencia deve ser inteiro positivo.');
+        }
+        foreach ([[$provider,80],[$externalExamId,190],[$bookletKey,190],[$version,120],[$externalQuestionId,190]] as [$value,$limit]) {
+            if (mb_strlen($value) > $limit) throw new InvalidArgumentException('Identidade de ocorrencia excede o limite do contrato.');
+        }
+
+        $bookletName = $bookletKey !== '' ? $bookletKey : 'Caderno principal';
+        if ($version !== '') $bookletName = mb_substr($bookletName, 0, 140) . ' [' . substr(hash('sha256', $version), 0, 32) . ']';
+        $findBooklet = $this->db->prepare(
+            'SELECT id FROM prova_cadernos WHERE prova_id = :exam_id AND nome = :name LIMIT 1'
+        );
+        $findBooklet->execute([':exam_id' => $examId, ':name' => $bookletName]);
+        $bookletId = $findBooklet->fetchColumn();
+        if ($bookletId === false) {
+            try {
+                $insertBooklet = $this->db->prepare(
+                    'INSERT INTO prova_cadernos (prova_id, nome, tipo, cor, metadata_json)
+                     VALUES (:exam_id, :name, :type, :color, :metadata)'
+                );
+                $insertBooklet->execute([
+                    ':exam_id' => $examId,
+                    ':name' => $bookletName,
+                    ':type' => isset($occurrence['bookletType']) ? substr((string) $occurrence['bookletType'], 0, 80) : null,
+                    ':color' => isset($occurrence['bookletColor']) ? substr((string) $occurrence['bookletColor'], 0, 80) : null,
+                    ':metadata' => json_encode([
+                        'sourceProvider' => $provider,
+                        'sourceBookletKey' => $bookletKey,
+                        'sourceVersion' => $version,
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+                ]);
+                $bookletId = (int) $this->db->lastInsertId();
+            } catch (PDOException $error) {
+                if ((string) $error->getCode() !== '23000') {
+                    throw $error;
+                }
+                $findBooklet->execute([':exam_id' => $examId, ':name' => $bookletName]);
+                $bookletId = $findBooklet->fetchColumn();
+                if ($bookletId === false) {
+                    throw $error;
+                }
+            }
+        }
+        $bookletId = (int) $bookletId;
+
+        $findSource = $this->db->prepare(
+            'SELECT identity.id, identity.question_prova_id, occurrence.question_id, occurrence.prova_id
+             FROM question_prova_source_identities identity
+             JOIN question_provas occurrence ON occurrence.id = identity.question_prova_id
+             WHERE identity.source_provider = :provider
+               AND identity.source_exam_external_id = :external_exam_id
+               AND identity.source_booklet_key = :booklet_key
+               AND identity.source_version = :source_version
+               AND identity.question_number = :question_number
+             LIMIT 1'
+        );
+        $sourceParams = [
+            ':provider' => $provider,
+            ':external_exam_id' => $externalExamId,
+            ':booklet_key' => $bookletKey,
+            ':source_version' => $version,
+            ':question_number' => $questionNumber,
+        ];
+        $findSource->execute($sourceParams);
+        $sourceMatch = $findSource->fetch(PDO::FETCH_ASSOC);
+        if (is_array($sourceMatch)) {
+            if ((int) $sourceMatch['question_id'] !== $questionId || (int) $sourceMatch['prova_id'] !== $examId) {
+                throw new DomainException('A identidade externa da ocorrencia ja aponta para outro conteudo ou prova.');
+            }
+            // Replays may add a verified answer revision; continue through the merge/history.
+        }
+
+        $number = ctype_digit($questionNumber) ? (int) $questionNumber : null;
+        $findOccurrence = $this->db->prepare(
+            'SELECT id, answer_key, answer_status FROM question_provas
+             WHERE question_id = :question_id AND prova_id = :exam_id AND caderno_id = :booklet_id
+               AND ((:question_number_is_null IS NULL AND numero_na_prova IS NULL)
+                    OR numero_na_prova = :question_number_value)
+             ORDER BY id ASC LIMIT 1'
+        );
+        $findOccurrence->bindValue(':question_id', $questionId, PDO::PARAM_INT);
+        $findOccurrence->bindValue(':exam_id', $examId, PDO::PARAM_INT);
+        $findOccurrence->bindValue(':booklet_id', $bookletId, PDO::PARAM_INT);
+        $findOccurrence->bindValue(':question_number_is_null', $number, $number === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+        $findOccurrence->bindValue(':question_number_value', $number, $number === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+        $findOccurrence->execute();
+        $existing = $findOccurrence->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($existing)) {
+            $findLegacyOccurrence = $this->db->prepare(
+                'SELECT id, answer_key, answer_status FROM question_provas
+                 WHERE question_id = :question_id AND prova_id = :exam_id AND caderno_id IS NULL
+                   AND ((:question_number_is_null IS NULL AND numero_na_prova IS NULL)
+                        OR numero_na_prova = :question_number_value)
+                 ORDER BY id ASC LIMIT 1'
+            );
+            $findLegacyOccurrence->bindValue(':question_id', $questionId, PDO::PARAM_INT);
+            $findLegacyOccurrence->bindValue(':exam_id', $examId, PDO::PARAM_INT);
+            $findLegacyOccurrence->bindValue(':question_number_is_null', $number, $number === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+            $findLegacyOccurrence->bindValue(':question_number_value', $number, $number === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+            $findLegacyOccurrence->execute();
+            $legacyOccurrence = $findLegacyOccurrence->fetch(PDO::FETCH_ASSOC);
+            if (is_array($legacyOccurrence)) {
+                $adoptLegacy = $this->db->prepare(
+                    'UPDATE question_provas SET caderno_id = :booklet_id, origin = COALESCE(origin, \'cm_batch\'),
+                        created_by_job_id = COALESCE(created_by_job_id, :job_id)
+                     WHERE id = :id AND caderno_id IS NULL'
+                );
+                $adoptLegacy->execute([':booklet_id' => $bookletId, ':job_id' => $jobId, ':id' => (int) $legacyOccurrence['id']]);
+                if ($adoptLegacy->rowCount() === 1) {
+                    $existing = $legacyOccurrence;
+                }
+            }
+        }
+        $answerKey = strtoupper(trim((string) ($occurrence['answerKey'] ?? '')));
+        $answerStatus = strtolower(trim((string) ($occurrence['answerStatus'] ?? 'unverified')));
+        if (!in_array($answerStatus, ['unverified', 'preliminary', 'definitive', 'annulled', 'conflict'], true)) {
+            $answerStatus = 'unverified';
+        }
+        $answerCanBecomeActive = in_array($answerStatus, ['preliminary', 'definitive', 'annulled'], true);
+        $sourcePage = isset($occurrence['sourcePage']) && is_numeric($occurrence['sourcePage'])
+            ? max(1, (int) $occurrence['sourcePage'])
+            : null;
+        $evidenceJson = json_encode(
+            is_array($occurrence['evidence'] ?? null) ? $occurrence['evidence'] : [],
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+        );
+        $occurrenceId = is_array($existing) ? (int) $existing['id'] : 0;
+        $existingAnswerStatus = strtolower(trim((string) ($existing['answer_status'] ?? '')));
+        $existingAnswerKey = strtoupper(trim((string) ($existing['answer_key'] ?? '')));
+        $answerConflict = $existingAnswerKey !== ''
+            && $answerKey !== ''
+            && $existingAnswerKey !== $answerKey;
+        if ($occurrenceId === 0) {
+            $insertOccurrence = $this->db->prepare(
+                'INSERT INTO question_provas
+                 (question_id, prova_id, caderno_id, numero_na_prova, answer_key, answer_status,
+                  source_page, origin, created_by_job_id, metadata_json)
+                 VALUES (:question_id, :exam_id, :booklet_id, :question_number, :answer_key, :answer_status,
+                         :source_page, :origin, :job_id, :metadata)'
+            );
+            $insertOccurrence->execute([
+                ':question_id' => $questionId,
+                ':exam_id' => $examId,
+                ':booklet_id' => $bookletId,
+                ':question_number' => $number,
+                ':answer_key' => $answerKey !== '' && $answerCanBecomeActive ? $answerKey : null,
+                ':answer_status' => $answerStatus,
+                ':source_page' => $sourcePage,
+                ':origin' => 'cm_batch',
+                ':job_id' => $jobId,
+                ':metadata' => json_encode(['sourceProvider' => $provider], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+            ]);
+            $occurrenceId = (int) $this->db->lastInsertId();
+        } elseif ($answerKey !== '' && $answerCanBecomeActive && !$answerConflict && (
+            $existingAnswerKey === ''
+            || ($existingAnswerKey === $answerKey && $answerStatus === 'definitive' && $existingAnswerStatus !== 'definitive')
+        )) {
+            $updateOccurrence = $this->db->prepare(
+                'UPDATE question_provas
+                 SET answer_key = :answer_key,
+                     answer_status = :answer_status,
+                     source_page = COALESCE(source_page, :source_page),
+                     origin = COALESCE(origin, \'cm_batch\'),
+                     created_by_job_id = COALESCE(created_by_job_id, :job_id)
+                 WHERE id = :id'
+            );
+            $updateOccurrence->execute([
+                ':answer_key' => $answerKey,
+                ':answer_status' => $answerStatus,
+                ':source_page' => $sourcePage,
+                ':job_id' => $jobId,
+                ':id' => $occurrenceId,
+            ]);
+        } else {
+            $answerStatus = $answerConflict ? 'conflict' : $answerStatus;
+        }
+
+        if ($answerKey !== '') {
+            $answerSnapshotKey = hash('sha256', json_encode([
+                $provider,
+                $answerKey,
+                $answerStatus,
+                (string) ($occurrence['sourceReference'] ?? ''),
+                json_decode($evidenceJson, true),
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+            $history = $this->db->prepare(
+                'INSERT INTO question_prova_answer_history
+                 (question_prova_id, answer_snapshot_key, answer_key, answer_status, source_provider, source_reference, evidence_json, created_by_job_id)
+                 VALUES (:occurrence_id, :snapshot_key, :answer_key, :answer_status, :provider, :source_reference, :evidence, :job_id)
+                 ON DUPLICATE KEY UPDATE answer_snapshot_key = VALUES(answer_snapshot_key)'
+            );
+            $history->execute([
+                ':occurrence_id' => $occurrenceId,
+                ':snapshot_key' => $answerSnapshotKey,
+                ':answer_key' => $answerKey,
+                ':answer_status' => $answerStatus,
+                ':provider' => $provider,
+                ':source_reference' => isset($occurrence['sourceReference']) ? substr((string) $occurrence['sourceReference'], 0, 1000) : null,
+                ':evidence' => $evidenceJson,
+                ':job_id' => $jobId,
+            ]);
+        }
+
+        try {
+            $insertIdentity = $this->db->prepare(
+                'INSERT INTO question_prova_source_identities
+                 (question_prova_id, source_provider, source_exam_external_id, source_booklet_key,
+                  source_question_external_id, source_version, question_number, source_page,
+                  source_reference, created_by_job_id)
+                 VALUES (:occurrence_id, :provider, :external_exam_id, :booklet_key,
+                         :external_question_id, :source_version, :question_number, :source_page,
+                         :source_reference, :job_id)'
+            );
+            $insertIdentity->execute([
+                ':occurrence_id' => $occurrenceId,
+                ':provider' => $provider,
+                ':external_exam_id' => $externalExamId,
+                ':booklet_key' => $bookletKey,
+                ':external_question_id' => $externalQuestionId !== '' ? $externalQuestionId : null,
+                ':source_version' => $version,
+                ':question_number' => $questionNumber,
+                ':source_page' => $sourcePage,
+                ':source_reference' => isset($occurrence['sourceReference']) ? substr((string) $occurrence['sourceReference'], 0, 1000) : null,
+                ':job_id' => $jobId,
+            ]);
+        } catch (PDOException $error) {
+            if ((string) $error->getCode() !== '23000') {
+                throw $error;
+            }
+            $findSource->execute($sourceParams);
+            $winner = $findSource->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($winner) || (int) $winner['question_id'] !== $questionId || (int) $winner['prova_id'] !== $examId) {
+                throw new DomainException('Conflito concorrente na identidade da ocorrencia da prova.', 0, $error);
+            }
+            return (int) $winner['question_prova_id'];
+        }
+
+        return $occurrenceId;
+    }
+
     /**
      * Insere uma questo nova e devolve o id gerado.
       * @since 1.0.0
@@ -2643,6 +3006,53 @@ class QuestionsRepository
      *
      * @since 1.0.0
      */
+    /** Exact external identity only; existing editorial data remains authoritative. */
+    public function saveCmBatchExam(array $record, string $provider, string $externalId, string $edition, string $jobId): int
+    {
+        if (!$this->db->inTransaction()) throw new LogicException('Prova CM Batch exige transacao ativa.');
+        if ($provider==='' || $externalId==='' || mb_strlen($provider)>80 || mb_strlen($externalId)>190 || mb_strlen($edition)>190) {
+            throw new InvalidArgumentException('Identidade externa da prova invalida.');
+        }
+        $identity=hash('sha256',json_encode([$provider,$externalId,$edition],JSON_THROW_ON_ERROR));
+        $lock=$this->db->prepare('INSERT IGNORE INTO cm_batch_identity_locks (identity_key) VALUES (:key)');
+        $lock->execute([':key'=>$identity]);
+        $lock=$this->db->prepare('SELECT identity_key FROM cm_batch_identity_locks WHERE identity_key=:key FOR UPDATE');
+        $lock->execute([':key'=>$identity]);
+        $find=$this->db->prepare('SELECT p.id,p.ano FROM cm_batch_exam_source_identities s JOIN provas p ON p.id=s.exam_id WHERE s.source_provider=:provider AND s.source_external_id=:external AND s.edition_key=:edition FOR UPDATE');
+        $find->execute([':provider'=>$provider,':external'=>$externalId,':edition'=>$edition]);
+        $existing=$find->fetch(PDO::FETCH_ASSOC);
+        if (!$existing && $edition==='') {
+            $find=$this->db->prepare('SELECT id,ano FROM provas WHERE source_provider=:provider AND source_external_id=:external FOR UPDATE');
+            $find->execute([':provider'=>$provider,':external'=>$externalId]);
+            $rows=$find->fetchAll(PDO::FETCH_ASSOC);
+            if(count($rows)>1)throw new DomainException('Identidade externa da prova ambigua.');
+            $existing=$rows[0]??null;
+        }
+        if($existing && (int)$existing['ano']!==(int)$record['ano'])throw new DomainException('Ano oficial diverge da prova existente.');
+        if($existing) $id=(int)$existing['id'];
+        else {
+            if(trim((string)($record['nome']??''))==='' || (int)$record['ano']<1900 || (int)$record['ano']>2100)throw new InvalidArgumentException('Titulo ou ano da prova invalido.');
+            $record['slug']=mb_substr((string)$record['slug'],0,140).'-cm-'.substr($identity,0,24);
+            // Versioned identities live in their own mapping; legacy provider keys are left intact.
+            $record['source_provider']=null;
+            $record['source_external_id']=null;
+            $record['status_editorial']='draft';
+            $record['visibility_status']='internal';
+            $record['scheduled_at']=null;
+            $record['published_by_user_id']=null;
+            $record['pdf_url']='';
+            $columns=['nome','slug','ano','banca_id','orgao_id','cargo_id','nivel_id','tipo_prova_id','carreira_id','pdf_url','metadata_json','source_provider','source_external_id','status_editorial','visibility_status','scheduled_at','created_by_user_id','updated_by_user_id','published_by_user_id'];
+            $insert=$this->db->prepare('INSERT INTO provas ('.implode(',',$columns).') VALUES (:'.implode(',:',$columns).')');
+            $this->bindImportedExamRecord($insert,$record);
+            $insert->execute();
+            $id=(int)$this->db->lastInsertId();
+            $this->syncImportedExamCanonicalData($id,$record);
+        }
+        $mapping=$this->db->prepare('INSERT INTO cm_batch_exam_source_identities (source_provider,source_external_id,edition_key,exam_id,created_by_job_id) VALUES (:provider,:external,:edition,:id,:job) ON DUPLICATE KEY UPDATE exam_id=exam_id');
+        $mapping->execute([':provider'=>$provider,':external'=>$externalId,':edition'=>$edition,':id'=>$id,':job'=>$jobId]);
+        return $id;
+    }
+
     public function saveImportedExam(array $record): int
     {
         StaticSitemapMutationInvalidator::invalidate('EXAM_CONTENT_MUTATION');

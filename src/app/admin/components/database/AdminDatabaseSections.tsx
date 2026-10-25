@@ -57,6 +57,7 @@ const AdminFilesSection = dynamic(() => import('../files/AdminFilesSection'), { 
 const AdminBlogSection = dynamic(() => import('../blog/AdminBlogSection'), { loading: AdminSectionLoading });
 const AdminChangelogSection = dynamic(() => import('../changelog/AdminChangelogSection'), { loading: AdminSectionLoading });
 const AdminImportSection = dynamic(() => import('../import/AdminImportSection'), { loading: AdminSectionLoading });
+const CmBatchZipImporter = dynamic(() => import('../import/CmBatchZipImporter'), { loading: AdminSectionLoading });
 const AdminGranCrawlerSection = dynamic(() => import('../import/AdminGranCrawlerSection'), { loading: AdminSectionLoading });
 const AdminGranCrawlerReviewBatch = dynamic(() => import('../import/AdminGranCrawlerReviewBatch'), { loading: AdminSectionLoading });
 const AdminLegalCommentarySection = dynamic(() => import('../legal-commentary/AdminLegalCommentarySection'), { loading: AdminSectionLoading });
@@ -711,13 +712,16 @@ const AdminDatabaseSections = ({
 
   if (activeSubTab === 'import') {
     return (
-      <AdminImportSection
-        systemSettings={systemSettings}
-        onGeminiApiKeyChange={onGeminiApiKeyChange}
-        onSaveSettings={onSaveImportSettings}
-        isSavingSettings={isSavingImportSettings}
-        {...importWorkflowProps}
-      />
+      <div className="space-y-6">
+        <CmBatchZipImporter />
+        <AdminImportSection
+          systemSettings={systemSettings}
+          onGeminiApiKeyChange={onGeminiApiKeyChange}
+          onSaveSettings={onSaveImportSettings}
+          isSavingSettings={isSavingImportSettings}
+          {...importWorkflowProps}
+        />
+      </div>
     );
   }
 
