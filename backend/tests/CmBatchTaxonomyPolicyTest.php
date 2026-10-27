@@ -26,4 +26,15 @@ $invalidated = CmBatchTaxonomyPolicy::invalidateDescendants($entities, 'portugue
 if ($invalidated[1]['canonicalId'] !== null || $invalidated[2]['canonicalId'] !== null || $invalidated[3]['canonicalId'] !== 101) {
     throw new RuntimeException('Descendant invalidation crossed scope or missed nested children');
 }
+foreach (['subjects'=>'assunto','topics'=>'assunto','examBoards'=>'banca','roles'=>'cargo','careers'=>'area'] as $category=>$sourceType) {
+    if (CmBatchTaxonomyPolicy::sourceType($category)!==$sourceType) throw new RuntimeException('Wrong provider namespace');
+}
+$ordered=CmBatchTaxonomyPolicy::orderedEntities(['topics'=>[['key'=>'child','parentKey'=>'root']], 'subjects'=>[['key'=>'root']]]);
+if(array_column(array_column($ordered,'entity'),'key')!==['root','child'])throw new RuntimeException('Parent ordering failed');
+$new=['name'=>'New topic','reviewRequired'=>false];
+if(!CmBatchTaxonomyPolicy::canProposeCreation($new,'no_verified_local_match',[],true))throw new RuntimeException('Safe creation blocked');
+foreach ([['no_verified_local_match',[7],true],['source_identity_parent_unresolved_or_mismatched',[],true],['no_verified_local_match',[],false]] as $args) {
+    if(CmBatchTaxonomyPolicy::canProposeCreation($new,...$args))throw new RuntimeException('Unsafe creation allowed');
+}
+if(CmBatchTaxonomyPolicy::canProposeCreation(array_merge($new,['reviewRequired'=>true]),'no_verified_local_match',[],true))throw new RuntimeException('Review bypassed');
 echo "CmBatchTaxonomyPolicyTest: PASS\n";

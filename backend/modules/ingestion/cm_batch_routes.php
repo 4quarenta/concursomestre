@@ -46,6 +46,9 @@ function handleCmBatchImportRoute(PDO $db): void
             $review->decide($_POST);
             Response::success($service->getJob((string) ($_POST['jobId'] ?? '')), 'Decisao registrada na previa.');
         }
+        if ($action === 'refresh_taxonomies') {
+            Response::success($service->refreshTaxonomies(trim((string)($_POST['jobId'] ?? ''))), 'Taxonomias reanalisadas; nenhum conteudo canonico foi alterado.');
+        }
         if (($_POST['action'] ?? '') === 'approve_and_start') {
             $jobId = trim((string) ($_POST['jobId'] ?? ''));
             $planHash = trim((string) ($_POST['planHash'] ?? ''));

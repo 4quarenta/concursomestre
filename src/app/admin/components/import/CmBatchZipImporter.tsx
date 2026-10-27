@@ -50,8 +50,7 @@ export default function CmBatchZipImporter() {
   const [reason, setReason] = useState('');
   const requestVersion = useRef(0);
   const selected = job?.plan.taxonomy.entities.find((entity) => `${entity.category}:${entity.key}` === selectedKey);
-  const taxonomyReady = Boolean(job?.plan.taxonomy.entities.every((entity) => ['matched_existing', 'creation_proposed'].includes(entity.status)));
-  const canStart = Boolean(job?.jobId && job.status === 'needs_review' && job.planHash && taxonomyReady && !busy);
+  const canStart = Boolean(job?.jobId && job.status === 'needs_review' && job.planHash && !busy);
   const skippedExamKeys = new Set((job?.plan.exams ?? []).filter((exam) => ['blocked', 'conflict', 'needs_review'].includes(exam.action)).map((exam) => exam.externalKey));
   const skippedQuestionItems = (job?.plan.questions.items ?? []).filter((question) => ['blocked', 'conflict', 'needs_review'].includes(question.action) || skippedExamKeys.has(question.examExternalKey));
 
@@ -166,6 +165,19 @@ export default function CmBatchZipImporter() {
     }
   };
 
+  const refreshTaxonomies = async () => {
+    if (!job?.jobId || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      setJob(await postAction({ action: 'refresh_taxonomies', jobId: job.jobId }) as CmBatchJob);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Falha ao reanalisar taxonomias.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const transition = async (operation: 'pause' | 'resume' | 'cancel' | 'retry') => {
     if (!job?.jobId || (busy && !processing)) return;
     setBusy(true);
@@ -256,6 +268,7 @@ export default function CmBatchZipImporter() {
 
           <div className="space-y-3 border-y border-slate-200 py-4 dark:border-slate-700">
             <h3 className="font-semibold">Revisar taxonomias</h3>
+            {job.jobId && job.status === 'needs_review' && <button type="button" disabled={busy} onClick={() => void refreshTaxonomies()} className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50 dark:border-slate-600">Reanalisar taxonomias automaticamente</button>}
             <label className="block text-sm">Entidade do lote
               <select disabled={busy} value={selectedKey} onChange={(event) => { requestVersion.current++; setSelectedKey(event.target.value); setCandidates([]); setCanonicalId(''); setReason(''); setSearch(''); }} className="mt-1 w-full rounded-md border border-slate-300 bg-white p-2 dark:border-slate-700 dark:bg-slate-950">
                 <option value="">Selecione uma entidade</option>
@@ -315,7 +328,7 @@ export default function CmBatchZipImporter() {
             {['needs_review', 'queued', 'running', 'paused', 'failed'].includes(job.status) && <button type="button" onClick={() => void transition('cancel')} disabled={busy && !processing} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-rose-300 px-3 text-sm text-rose-700 dark:border-rose-900 dark:text-rose-300"><Square size={14} />Cancelar</button>}
             {processing && <span role="status" className="text-xs text-slate-500 dark:text-slate-400">Processando em blocos...</span>}
             {job.status === 'validated_only' && <p className="basis-full text-xs text-slate-500 dark:text-slate-400">A validação não gravou nada. Salve a prévia privada para revisar as correspondências e habilitar o início.</p>}
-            {!canStart && job.status === 'needs_review' && <p className="text-xs text-slate-500 dark:text-slate-400">Para iniciar, resolva as taxonomias que ainda não puderam ser associadas com segurança. Conflitos de provas e questões serão pulados.</p>}
+            {job.status === 'needs_review' && <p className="text-xs text-slate-500 dark:text-slate-400">IDs de origem são reutilizados e novos cadastros seguros são criados ao aprovar. Apenas os itens que dependem de taxonomias não resolvidas ficarão bloqueados, com o motivo no relatório. Comentários e análises ausentes são acrescentados como rascunhos, sem substituir conteúdo existente.</p>}
           </div>
           <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400"><CheckCircle2 size={14} /> {job.jobId ? 'ZIP mantido em armazenamento privado; cada item é confirmado por checkpoint e pode ser retomado.' : 'Validação sem gravação. Salve a prévia para registrar decisões.'}</p>
         </div>

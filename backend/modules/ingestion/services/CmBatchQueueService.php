@@ -19,7 +19,9 @@ final class CmBatchQueueService
             $plan = json_decode($job['dry_run_json'],true,512,JSON_THROW_ON_ERROR);
             $this->materializeApprovedTaxonomyProposals($plan, $jobId);
             foreach ($plan['taxonomy']['entities'] ?? [] as $entity) {
-                if ($entity['status'] !== 'matched_existing' || empty($entity['canonicalId'])) throw new DomainException('Resolva todas as taxonomias antes de aprovar.');
+                if ($entity['status'] === 'matched_existing' && !empty($entity['canonicalId'])) {
+                    $this->persistApprovedTaxonomySources($entity, (int)$entity['canonicalId'], CmBatchTaxonomyPolicy::definition($entity['category'])[0], $jobId);
+                }
             }
             $savePlan = $this->db->prepare('UPDATE cm_batch_import_jobs SET dry_run_json=:plan WHERE job_id=:job');
             $savePlan->execute([':plan'=>json_encode($plan,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),':job'=>$jobId]);
@@ -142,7 +144,7 @@ final class CmBatchQueueService
             if (!$item || $item['status']==='done') { $this->db->commit(); return; }
             $attempt=(int)$item['attempt_count']+1;
             $retryable=$error instanceof PDOException && in_array((string)$error->getCode(),['40001','HY000'],true);
-            $status=$retryable && $attempt<5 ? 'retry' : 'failed';
+            $status=$error instanceof DomainException ? 'blocked' : ($retryable && $attempt<5 ? 'retry' : 'failed');
             $delay=min(300,2 ** min($attempt,8));
             $diagnostic=['code'=>$retryable?'database_retry':'item_rejected','exceptionType'=>get_class($error),'message'=>mb_substr(trim(preg_replace('/[\r\n\t]+/u',' ',$error->getMessage())??''),0,500),'attempt'=>$attempt];
             $stmt=$this->db->prepare("UPDATE cm_batch_import_items SET status=:status,attempt_count=:attempt,diagnostics_json=:diagnostic,next_attempt_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL $delay SECOND) WHERE id=:id");
@@ -256,11 +258,13 @@ final class CmBatchQueueService
             if($provider===''||$externalId==='')continue;
             if(mb_strlen($provider)>40||mb_strlen($externalId)>120)throw new DomainException('Identidade externa excede os limites do cadastro.');
             $check=$this->db->prepare('SELECT filter_id FROM filter_source_identities WHERE filter_type=:type AND source_provider=:provider AND source_entity_type=:entity_type AND source_external_id=:external FOR UPDATE');
-            $check->execute([':type'=>$filterType,':provider'=>$provider,':entity_type'=>CmBatchTaxonomyPolicy::definition((string)$entity['category'])[1],':external'=>$externalId]);
+            $check->execute([':type'=>$filterType,':provider'=>$provider,':entity_type'=>CmBatchTaxonomyPolicy::sourceType((string)$entity['category']),':external'=>$externalId]);
             $existing=$check->fetchColumn();
             if($existing!==false&&(int)$existing!==$filterId)throw new DomainException('Identidade externa ja vinculada a outro filtro canonico.');
             $insert=$this->db->prepare('INSERT INTO filter_source_identities (filter_id,filter_type,source_provider,source_entity_type,source_external_id,source_parent_external_id,source_root_external_id) VALUES (:id,:type,:provider,:entity_type,:external,:parent,:root) ON DUPLICATE KEY UPDATE filter_id=filter_id');
-            $insert->execute([':id'=>$filterId,':type'=>$filterType,':provider'=>$provider,':entity_type'=>CmBatchTaxonomyPolicy::definition((string)$entity['category'])[1],':external'=>$externalId,':parent'=>isset($sourceEntity['parentExternalId'])?substr((string)$sourceEntity['parentExternalId'],0,120):null,':root'=>isset($sourceEntity['rootExternalId'])?substr((string)$sourceEntity['rootExternalId'],0,120):null]);
+            $insert->execute([':id'=>$filterId,':type'=>$filterType,':provider'=>$provider,':entity_type'=>CmBatchTaxonomyPolicy::sourceType((string)$entity['category']),':external'=>$externalId,':parent'=>isset($sourceEntity['parentExternalId'])?substr((string)$sourceEntity['parentExternalId'],0,120):null,':root'=>isset($sourceEntity['rootExternalId'])?substr((string)$sourceEntity['rootExternalId'],0,120):null]);
+            $check->execute([':type'=>$filterType,':provider'=>$provider,':entity_type'=>CmBatchTaxonomyPolicy::sourceType((string)$entity['category']),':external'=>$externalId]);
+            if ((int)$check->fetchColumn() !== $filterId) throw new DomainException('Identidade de origem alterada concorrentemente; reanalise a previa.');
         }
     }
 

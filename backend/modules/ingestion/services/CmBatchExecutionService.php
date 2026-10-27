@@ -332,7 +332,7 @@ final class CmBatchExecutionService
     {
         $entities = $plan['taxonomy']['entities'] ?? [];
         if (!is_array($entities)) throw new DomainException('Resolucao canonica de taxonomias ausente.');
-        foreach ($entities as $entity) if (($entity['status'] ?? '') !== 'matched_existing' || empty($entity['canonicalId'])) throw new DomainException('Existe taxonomia sem ID canonico resolvido.');
+        // Dependencies are checked by each item; unrelated pending taxonomies do not block the batch.
         return $entities;
     }
 

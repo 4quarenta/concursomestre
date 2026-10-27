@@ -71,6 +71,16 @@ try {
     $source=$db->query("SELECT source_provider,source_external_id FROM questions WHERE id=".(int)$first['canonicalId'])->fetch(PDO::FETCH_ASSOC);
     if($source!==['source_provider'=>'gran','source_external_id'=>'q1'])throw new RuntimeException('Gran identity was not stored on the canonical question');
     if($db->query('SELECT status FROM question_editorials')->fetchColumn()!=='draft')throw new RuntimeException('Editorial auto approved');
+    $question['editorial']=[['type'=>'teacher_comment','body'=>'Replacement must not overwrite'],['type'=>'detailed_analysis','body'=>'Missing analysis added']];
+    for($i=0;$i<2;$i++) {
+        $db->beginTransaction();
+        $enriched=$service->importCmBatchDraftQuestion('admin',$job,1,$question,[],[],['subjects'=>[1]],$occurrence);
+        $db->commit();
+        if($enriched['canonicalId']!==$first['canonicalId'])throw new RuntimeException('Enrichment copied question');
+    }
+    if($db->query("SELECT body FROM question_editorials WHERE editorial_type='teacher_comment'")->fetchColumn()!=='Comentario ainda nao conferido')throw new RuntimeException('Existing comment overwritten');
+    if($db->query("SELECT body FROM question_editorials WHERE editorial_type='detailed_analysis'")->fetchColumn()!=='Missing analysis added')throw new RuntimeException('Missing analysis not added');
+    if((int)$db->query('SELECT COUNT(*) FROM question_editorials')->fetchColumn()!==2)throw new RuntimeException('Editorial replay duplicated rows');
     echo "CmBatchCanonicalIntegrationTest: PASS (direct Gran source_external_id lookup, canonical options/editorial, N:N, private drafts, no active unverified answer)\n";
 } finally {
     if($db->inTransaction())$db->rollBack();

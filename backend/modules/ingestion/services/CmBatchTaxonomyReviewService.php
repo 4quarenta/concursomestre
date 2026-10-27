@@ -117,7 +117,8 @@ final class CmBatchTaxonomyReviewService
 
     private function persistVerifiedSourceMappings(array $entity, int $filterId): void
     {
-        [$filterType, $sourceType] = CmBatchTaxonomyPolicy::definition((string) $entity['category']);
+        [$filterType] = CmBatchTaxonomyPolicy::definition((string) $entity['category']);
+        $sourceType = CmBatchTaxonomyPolicy::sourceType((string) $entity['category']);
         $sourceEntity = is_array($entity['sourceEntity'] ?? null) ? $entity['sourceEntity'] : [];
         foreach (is_array($entity['sourceMappings'] ?? null) ? $entity['sourceMappings'] : [] as $mapping) {
             if (!is_array($mapping)) continue;

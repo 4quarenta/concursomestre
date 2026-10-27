@@ -78,7 +78,7 @@ if (!str_contains($migration, 'INSERT IGNORE INTO question_source_identities')
     || str_contains($migration, 'ON DUPLICATE KEY UPDATE question_id')) {
     throw new RuntimeException('Legacy source identity backfill must be insert-only after conflict checks.');
 }
-foreach (['Apenas validar', 'Salvar prévia para revisão', 'Aprovar e iniciar importação', 'Importação aditiva e sem publicação', 'Questões que serão puladas para evitar duplicatas', 'admin/cm_batch.php'] as $needle) {
+foreach (['Apenas validar', 'Validar ZIP e preparar importação', 'Reanalisar taxonomias automaticamente', 'Aprovar e iniciar importação', 'Importação aditiva e sem publicação', 'Questões que serão puladas para evitar duplicatas', 'admin/cm_batch.php'] as $needle) {
     if (!str_contains($adminPanel, $needle)) {
         throw new RuntimeException('Missing admin preview contract: ' . $needle);
     }

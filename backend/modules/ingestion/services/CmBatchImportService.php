@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/CmBatchZipValidator.php';
 require_once __DIR__ . '/../domain/CmBatchQuestionIdentity.php';
+require_once __DIR__ . '/../domain/CmBatchTaxonomyPolicy.php';
 
 /** Private staging and control-plane operations for cm-batch.v1. */
 final class CmBatchImportService
@@ -51,7 +52,9 @@ final class CmBatchImportService
         $existing->execute([':sha' => $summary['archiveSha256']]);
         $prior = $existing->fetch(PDO::FETCH_ASSOC);
         if (is_array($prior)) {
-            return $this->getJob((string) $prior['job_id']);
+            return $prior['status'] === 'needs_review'
+                ? $this->refreshTaxonomies((string) $prior['job_id'])
+                : $this->getJob((string) $prior['job_id']);
         }
 
         $storageDirectory = $this->privateStorageDirectory();
@@ -104,6 +107,49 @@ final class CmBatchImportService
             throw $error;
         }
 
+        return $this->getJob($jobId);
+    }
+
+    public function refreshTaxonomies(string $jobId): array
+    {
+        $this->db->beginTransaction();
+        try {
+            $find = $this->db->prepare('SELECT * FROM cm_batch_import_jobs WHERE job_id=:id FOR UPDATE');
+            $find->execute([':id' => $jobId]);
+            $job = $find->fetch(PDO::FETCH_ASSOC);
+            if (!$job || $job['status'] !== 'needs_review') throw new DomainException('Apenas previas ainda nao aprovadas podem ser reanalisadas.');
+            $path = (string)$job['archive_path'];
+            if (!is_file($path) || is_link($path) || !hash_equals($job['archive_sha256'], (string)hash_file('sha256', $path))) throw new DomainException('Arquivo privado ausente ou alterado.');
+            $zip = new ZipArchive();
+            if ($zip->open($path, ZipArchive::RDONLY) !== true) throw new DomainException('ZIP privado indisponivel.');
+            try { $document = json_decode((string)$zip->getFromName('taxonomias-global.json'), true, 512, JSON_THROW_ON_ERROR); }
+            finally { $zip->close(); }
+            $plan = json_decode($job['dry_run_json'], true, 512, JSON_THROW_ON_ERROR);
+            $fresh = $this->resolveTaxonomiesConservatively($document);
+            foreach ($plan['taxonomy']['entities'] as $previous) {
+                if (empty($previous['decision'])) continue;
+                foreach ($fresh['entities'] as $index => $entity) {
+                    if ($entity['category'] !== $previous['category'] || $entity['key'] !== $previous['key']) continue;
+                    if (($entity['canonicalId'] ?? null) !== ($previous['canonicalId'] ?? null)) {
+                        $fresh['entities'] = CmBatchTaxonomyPolicy::invalidateDescendants($fresh['entities'], $entity['key']);
+                    }
+                    $fresh['entities'][$index] = $previous;
+                }
+            }
+            $entities = $fresh['entities'];
+            $plan['taxonomy']['entities'] = $entities;
+            $plan['taxonomy']['matchedExisting'] = count(array_filter($entities, static fn(array $e): bool => $e['status'] === 'matched_existing'));
+            $plan['taxonomy']['creationProposed'] = count(array_filter($entities, static fn(array $e): bool => $e['status'] === 'creation_proposed'));
+            $plan['taxonomy']['needsReview'] = count($entities) - $plan['taxonomy']['matchedExisting'] - $plan['taxonomy']['creationProposed'];
+            $save = $this->db->prepare('UPDATE cm_batch_import_jobs SET dry_run_json=:plan WHERE job_id=:id');
+            $save->execute([':id'=>$jobId, ':plan'=>json_encode($plan, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)]);
+            $resolution = $this->db->prepare('UPDATE cm_batch_taxonomy_resolutions SET canonical_filter_id=:id,resolution_status=:status,matched_by=:reason,match_reason=:message WHERE job_id=:job AND taxonomy_type=:category AND external_key=:key');
+            foreach ($entities as $entity) $resolution->execute([':id'=>$entity['canonicalId'], ':status'=>$entity['status'], ':reason'=>$entity['reason'], ':message'=>$entity['reason'], ':job'=>$jobId, ':category'=>$entity['category'], ':key'=>$entity['key']]);
+            $this->db->commit();
+        } catch (Throwable $error) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $error;
+        }
         return $this->getJob($jobId);
     }
 
@@ -186,6 +232,7 @@ final class CmBatchImportService
                 'declared' => count($taxonomyPlan['entities']),
                 'matchedExisting' => $taxonomyPlan['counts']['matched_existing'],
                 'created' => 0,
+                'creationProposed' => $taxonomyPlan['counts']['creation_proposed'],
                 'ambiguous' => $taxonomyPlan['counts']['ambiguous'],
                 'needsReview' => $taxonomyPlan['counts']['needs_review'],
                 'entities' => $taxonomyPlan['entities'],
@@ -447,10 +494,13 @@ final class CmBatchImportService
             }
         }
 
-        $counts = ['matched_existing' => 0, 'ambiguous' => 0, 'needs_review' => 0];
+        $counts = ['matched_existing' => 0, 'creation_proposed' => 0, 'ambiguous' => 0, 'needs_review' => 0];
         $resolvedByKey = [];
+        $proposedByKey = [];
         $entities = [];
-        foreach (is_array($document['taxonomies'] ?? null) ? $document['taxonomies'] : [] as $category => $items) {
+        foreach (CmBatchTaxonomyPolicy::orderedEntities($document['taxonomies'] ?? []) as $ordered) {
+            $category = $ordered['category'];
+            $items = [$ordered['entity']];
             if (!isset($definitions[$category]) || !is_array($items)) {
                 continue;
             }
@@ -477,21 +527,21 @@ final class CmBatchImportService
                     }
                     $identityKey = $provider . '|' . strtolower($definition['sourceType']) . '|' . $externalId;
                     foreach ($identityCandidates[$identityKey] ?? [] as $row) {
-                        if ($row['type'] === $definition['type'] && (!isset($definition['level']) || $row['level'] === $definition['level'])) {
+                        if ($row['type'] === $definition['type']) {
                             $candidateIds[$row['id']] = $row['parentId'];
+                            if (isset($definition['level']) && $row['level'] !== $definition['level']) $reason = 'source_identity_level_mismatch';
                         }
                     }
                 }
                 if (count($candidateIds) === 1) {
                     $candidateId = (int) array_key_first($candidateIds);
                     $candidateParent = $candidateIds[$candidateId];
-                    if (($parentKey === '' && $candidateParent === null) || ($parentId !== null && $candidateParent === $parentId)) {
+                    if ($reason !== 'source_identity_level_mismatch' && (($parentKey === '' && ($candidateParent === null || !isset($definition['level']))) || ($parentId !== null && $candidateParent === $parentId))) {
                         $status = 'matched_existing';
                         $reason = 'source_identity_and_parent';
                         $resolvedByKey[$key] = $candidateId;
                     } else {
-                        $candidateIds = [];
-                        $reason = 'source_identity_parent_unresolved_or_mismatched';
+                        if ($reason !== 'source_identity_level_mismatch') $reason = 'source_identity_parent_unresolved_or_mismatched';
                     }
                 } elseif (count($candidateIds) > 1) {
                     $status = 'ambiguous';
@@ -526,9 +576,17 @@ final class CmBatchImportService
                         foreach ($compatible as $candidate) {
                             $candidateIds[(int) $candidate['id']] = $candidate['parent_id'] !== null ? (int) $candidate['parent_id'] : null;
                         }
+                    } elseif ($nameMatches !== []) {
+                        $reason = 'name_candidate_requires_scope_review';
                     }
                 }
-                $counts[$status === 'matched_existing' ? 'matched_existing' : ($status === 'ambiguous' ? 'ambiguous' : 'needs_review')]++;
+                if (CmBatchTaxonomyPolicy::canProposeCreation($entity, $reason, $candidateIds,
+                    $parentKey === '' || $parentId !== null || isset($proposedByKey[$parentKey]))) {
+                    $status = 'creation_proposed';
+                    $reason = 'new_taxonomy_on_explicit_batch_approval';
+                    $proposedByKey[$key] = true;
+                }
+                $counts[$status]++;
                 $entities[] = [
                     'category' => $category,
                     'key' => $key,

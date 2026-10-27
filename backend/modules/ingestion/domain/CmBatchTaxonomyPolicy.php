@@ -4,6 +4,43 @@ declare(strict_types=1);
 
 final class CmBatchTaxonomyPolicy
 {
+    public static function sourceType(string $category): string
+    {
+        return $category === 'careers' ? 'area' : self::definition($category)[0];
+    }
+
+    /** Parents precede children even when a provider sends categories out of order. */
+    public static function orderedEntities(array $taxonomies): array
+    {
+        $pending = [];
+        foreach ($taxonomies as $category => $items) {
+            self::definition($category);
+            foreach ($items as $entity) $pending[] = ['category' => $category, 'entity' => $entity];
+        }
+        $known = array_fill_keys(array_column(array_column($pending, 'entity'), 'key'), true);
+        $ordered = []; $done = [];
+        while ($pending !== []) {
+            $progress = false;
+            foreach ($pending as $index => $row) {
+                $parent = $row['entity']['parentKey'] ?? '';
+                if ($parent !== '' && isset($known[$parent]) && !isset($done[$parent])) continue;
+                $ordered[] = $row;
+                $done[$row['entity']['key']] = true;
+                unset($pending[$index]);
+                $progress = true;
+            }
+            if (!$progress) return array_merge($ordered, array_values($pending));
+        }
+        return $ordered;
+    }
+
+    public static function canProposeCreation(array $entity, string $reason, array $candidateIds, bool $parentReady): bool
+    {
+        return $reason === 'no_verified_local_match' && $candidateIds === [] && $parentReady
+            && ($entity['reviewRequired'] ?? true) === false
+            && trim((string) ($entity['name'] ?? '')) !== '';
+    }
+
     public static function definition(string $category): array
     {
         $definitions = [
