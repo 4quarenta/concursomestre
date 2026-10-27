@@ -4,6 +4,8 @@ import { useRef, useState } from 'react';
 import { AlertTriangle, Archive, CheckCircle2, Download, FileCheck2, Loader2, Pause, Play, ShieldCheck, Square } from 'lucide-react';
 import { fetchAuthenticatedResource } from '@services/api/client';
 import { getCsrfToken } from '@services/auth/session';
+import CmBatchQueueDiagnostics from './CmBatchQueueDiagnostics';
+import type { CmBatchQueueItem } from './cmBatchDiagnostics';
 
 type CmBatchJob = {
   jobId: string | null;
@@ -12,7 +14,7 @@ type CmBatchJob = {
   datasetLabel: string;
   status: string;
   progress?: { completedExams?: number; completedQuestions?: number; failed?: number; blocked?: number; pending?: number; totalExams?: number; totalQuestions?: number } | null;
-  items?: Array<{ id: number; entityType: string; externalKey: string; action: string; status: string; canonicalId: string | null; attempts: number; diagnostics: { message?: string; code?: string } }>;
+  items?: CmBatchQueueItem[];
   planHash: string | null;
   manifest: { yearsCovered?: number[] };
   plan: {
@@ -315,10 +317,7 @@ export default function CmBatchZipImporter() {
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full bg-indigo-600 transition-all" style={{ width: `${Math.min(100, (((job.progress.completedExams ?? 0) + (job.progress.completedQuestions ?? 0)) / Math.max(1, (job.progress.totalExams ?? job.plan.exams.length) + (job.progress.totalQuestions ?? job.plan.questions.total))) * 100)}%` }} /></div>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{job.progress.pending ?? 0} pendentes · {job.progress.blocked ?? 0} bloqueados · {job.progress.failed ?? 0} falhas</p>
           </div>}
-          {(job.items ?? []).some((item) => item.status === 'failed') && <details className="rounded-md border border-rose-200 p-3 text-sm dark:border-rose-900/50">
-            <summary className="cursor-pointer font-semibold text-rose-800 dark:text-rose-300">Ver itens com falha ({(job.items ?? []).filter((item) => item.status === 'failed').length})</summary>
-            <ul className="mt-2 space-y-2 text-xs text-rose-800 dark:text-rose-200">{(job.items ?? []).filter((item) => item.status === 'failed').map((item) => <li key={item.id}><strong>{item.entityType} · {item.externalKey}</strong><span className="block">{item.diagnostics.message || item.diagnostics.code || 'Falha sem detalhe disponível.'}</span></li>)}</ul>
-          </details>}
+          {!!job.items?.length && <CmBatchQueueDiagnostics key={job.jobId} items={job.items} exams={job.plan.exams} questions={job.plan.questions.items ?? []} />}
           <div className="flex flex-wrap items-center gap-2">
             {job.status === 'validated_only' && <button type="button" onClick={() => void validate(true)} disabled={!file || busy} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"><Archive size={16} />Salvar prévia e habilitar importação</button>}
             {job.status === 'needs_review' && <button type="button" onClick={() => void approveAndStart()} disabled={!canStart} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"><Play size={16} />Aprovar e iniciar importação</button>}
