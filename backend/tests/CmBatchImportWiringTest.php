@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 $routes = file_get_contents($root . '/modules/ingestion/cm_batch_routes.php');
+$executor = file_get_contents($root . '/modules/ingestion/services/CmBatchExecutionService.php');
 $service = file_get_contents($root . '/modules/ingestion/services/CmBatchImportService.php');
 $adminPanel = file_get_contents($root . '/../src/app/admin/components/import/CmBatchZipImporter.tsx');
 $migration = file_get_contents($root . '/database/migrations/20261025_010000_cm_batch_import.php');
@@ -13,11 +14,29 @@ foreach ([
     "verifyAuthenticatedUserPayload(false)",
     "\$role !== 'admin'",
     'assertValidCsrfToken(getCsrfTokenFromCookie(), getCsrfTokenFromRequest())',
-    "RateLimiter::enforceProfile('upload'",
+    "RateLimiter::enforceProfile(",
     "\$_FILES['archive']",
 ] as $needle) {
     if (!str_contains($routes, $needle)) {
         throw new RuntimeException('Missing protected route contract: ' . $needle);
+    }
+}
+foreach (["'approve_and_start'", "'process'", "'transition'"] as $needle) {
+    if (!str_contains($routes, $needle)) {
+        throw new RuntimeException('Missing explicit import queue action: ' . $needle);
+    }
+}
+foreach ([
+    'MAX_ITEMS_PER_REQUEST = 10',
+    'saveCmBatchExam',
+    'importCmBatchDraftQuestion',
+    'question-assets/cm-batch/',
+    "'answerKey' => ''",
+    "'answerStatus' => 'unverified'",
+    'hash_file(\'sha256\', $archivePath)',
+] as $needle) {
+    if (!str_contains($executor, $needle)) {
+        throw new RuntimeException('Missing bounded CM Batch execution guard: ' . $needle);
     }
 }
 foreach ([
@@ -30,6 +49,8 @@ foreach ([
     'source_identity_parent_unresolved_or_mismatched',
     'same_verified_content_repeated_within_batch',
     'gran_external_id_content_conflict',
+    'canonicalUpdatedAt',
+    'existing_question_missing_editorial_fields',
     'chmod($storedPath, 0600)',
 ] as $needle) {
     if (!str_contains($service, $needle)) {
@@ -57,9 +78,14 @@ if (!str_contains($migration, 'INSERT IGNORE INTO question_source_identities')
     || str_contains($migration, 'ON DUPLICATE KEY UPDATE question_id')) {
     throw new RuntimeException('Legacy source identity backfill must be insert-only after conflict checks.');
 }
-foreach (['Apenas validar', 'Salvar prévia para revisão', 'nenhum item será publicado', 'admin/cm_batch.php'] as $needle) {
+foreach (['Apenas validar', 'Salvar prévia para revisão', 'Aprovar e iniciar importação', 'Importação aditiva e sem publicação', 'Questões que serão puladas para evitar duplicatas', 'admin/cm_batch.php'] as $needle) {
     if (!str_contains($adminPanel, $needle)) {
         throw new RuntimeException('Missing admin preview contract: ' . $needle);
+    }
+}
+foreach (['fill_missing_editorial_only', 'mergeMissingContext', 'mergeMissingCmBatchExamFields', 'question_excluded_by_dry_run'] as $needle) {
+    if (!str_contains($questionRepository . file_get_contents($root . '/modules/questions/services/CmBatchDraftQuestionImporter.php') . file_get_contents($root . '/modules/ingestion/services/CmBatchQueueService.php'), $needle)) {
+        throw new RuntimeException('Missing additive reconciliation behavior: ' . $needle);
     }
 }
 

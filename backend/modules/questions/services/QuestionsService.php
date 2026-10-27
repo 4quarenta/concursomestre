@@ -851,7 +851,7 @@ class QuestionsService
     }
 
     /** Internal worker entry: caller owns transaction, approval and archive validation. */
-    public function importCmBatchDraftQuestion(string $actorId, string $jobId, int $examId, array $question, array $contexts, array $verifiedAssetHashes, array $resolvedFilterIds, array $occurrence): array
+    public function importCmBatchDraftQuestion(string $actorId, string $jobId, int $examId, array $question, array $contexts, array $verifiedAssetHashes, array $resolvedFilterIds, array $occurrence, ?int $canonicalQuestionId = null, ?string $canonicalUpdatedAt = null): array
     {
         $importer = new CmBatchDraftQuestionImporter(
             $this->repository,
@@ -860,7 +860,7 @@ class QuestionsService
             $this->canonicalRepository,
             \Closure::fromCallable([$this, 'persistValidatedQuestion'])
         );
-        return $importer->import($actorId, $jobId, $examId, $question, $contexts, $verifiedAssetHashes, $resolvedFilterIds, $occurrence);
+        return $importer->import($actorId, $jobId, $examId, $question, $contexts, $verifiedAssetHashes, $resolvedFilterIds, $occurrence, $canonicalQuestionId, $canonicalUpdatedAt);
     }
 
     public function bulkImportQuestions(

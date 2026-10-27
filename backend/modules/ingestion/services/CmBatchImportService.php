@@ -122,6 +122,25 @@ final class CmBatchImportService
         if (!is_array($job)) {
             throw new OutOfBoundsException('Importacao nao encontrada.');
         }
+        $items = $this->db->prepare(
+            'SELECT id, entity_type, external_key, action, status, canonical_entity_id,
+                    attempt_count, diagnostics_json, updated_at
+             FROM cm_batch_import_items WHERE job_id=:job ORDER BY id'
+        );
+        $items->execute([':job' => $jobId]);
+        $itemRows = array_map(static function (array $item): array {
+            return [
+                'id' => (int) $item['id'],
+                'entityType' => (string) $item['entity_type'],
+                'externalKey' => (string) $item['external_key'],
+                'action' => (string) $item['action'],
+                'status' => (string) $item['status'],
+                'canonicalId' => $item['canonical_entity_id'] !== null ? (string) $item['canonical_entity_id'] : null,
+                'attempts' => (int) $item['attempt_count'],
+                'diagnostics' => json_decode((string) ($item['diagnostics_json'] ?? ''), true) ?: [],
+                'updatedAt' => (string) $item['updated_at'],
+            ];
+        }, $items->fetchAll(PDO::FETCH_ASSOC) ?: []);
         return [
             'jobId' => (string) $job['job_id'],
             'batchId' => (string) $job['batch_id'],
@@ -132,6 +151,7 @@ final class CmBatchImportService
             'manifest' => json_decode((string) $job['manifest_json'], true) ?: [],
             'plan' => json_decode((string) ($job['dry_run_json'] ?? ''), true) ?: [],
             'progress' => json_decode((string) ($job['progress_json'] ?? ''), true) ?: [],
+            'items' => $itemRows,
             'lastError' => $job['last_error'] !== null ? (string) $job['last_error'] : null,
             'createdAt' => (string) $job['created_at'],
             'updatedAt' => (string) $job['updated_at'],
@@ -258,6 +278,8 @@ final class CmBatchImportService
                     'tempId' => $question['tempId'],
                     'questionNumber' => $question['questionNumber'],
                     'externalQuestionId' => $question['externalQuestionId'] ?? null,
+                    'canonicalQuestionId' => $question['canonicalQuestionId'] ?? null,
+                    'canonicalUpdatedAt' => $question['canonicalUpdatedAt'] ?? null,
                     'publication' => $question['publication'],
                     'answerStatus' => $question['answerStatus'],
                 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
@@ -679,7 +701,7 @@ final class CmBatchImportService
             foreach ($questionIdsByFingerprint[$record['fingerprint']] ?? [] as $id) $candidateIds[(int) $id] = true;
         }
         $relations = $this->loadQuestionRelations(array_keys($candidateIds));
-        foreach ($contentById as $id => &$row) $row['_relations'] = $relations[$id] ?? ['contexts' => [], 'assets' => [], 'options' => [], 'contextAssets' => []];
+        foreach ($contentById as $id => &$row) $row['_relations'] = $relations[$id] ?? ['contexts' => [], 'assets' => [], 'options' => [], 'contextAssets' => [], 'editorials' => []];
         unset($row);
         $questionFilterIds = $this->loadQuestionFilterIds(array_keys($candidateIds));
         $taxonomyFilterLookup = $this->loadTaxonomyFilterLookup();
@@ -724,15 +746,18 @@ final class CmBatchImportService
             $comparisons = [];
             foreach ($candidateRows as $id => $candidate) {
                 $comparisons[$id] = $this->compareQuestionContent($record, $candidate);
+                $comparisons[$id]['canonicalUpdatedAt'] = (string) ($candidate['updated_at'] ?? '');
             }
             $exactIds = array_keys(array_filter($comparisons, static fn (array $item): bool => $item['status'] === 'exact'));
             $mediaIds = array_keys(array_filter($comparisons, static fn (array $item): bool => $item['status'] === 'media_unverified'));
             $statementOnlyIds = array_keys(array_filter($comparisons, static fn (array $item): bool => $item['status'] === 'statement_only'));
+            $contextEnrichmentIds = array_keys(array_filter($comparisons, static fn (array $item): bool => $item['status'] === 'context_missing_existing'));
 
             $reconciliation = 'create';
             $action = 'create';
             $canonicalId = null;
             $reason = 'no_existing_identity_or_full_content_candidate';
+            $missingEditorialTypes = [];
             if (count($sourceMatches) > 1) {
                 $reconciliation = 'conflict'; $action = 'conflict';
                 $reason = 'gran_external_id_maps_to_multiple_canonical_questions';
@@ -747,6 +772,18 @@ final class CmBatchImportService
                 $reason = $sourceMatches !== []
                     ? 'gran_external_id_and_verified_canonical_content_match_occurrence_link_required'
                     : 'unique_full_content_match_among_statement_candidates';
+                $missingEditorialTypes = $this->missingEditorialTypes($record['_question'], $contentById[$canonicalId], $record['enrichment'] ?? []);
+                if ($missingEditorialTypes !== []) {
+                    $reconciliation = 'enrich_existing';
+                    $action = 'enrich';
+                    $reason = 'existing_question_missing_editorial_fields';
+                }
+            } elseif ($candidateRows !== [] && count($contextEnrichmentIds) === 1 && count($comparisons) === 1) {
+                $canonicalId = (int) $contextEnrichmentIds[0];
+                $reconciliation = 'enrich_existing';
+                $action = 'enrich';
+                $reason = 'existing_question_missing_verified_context';
+                $missingEditorialTypes = $this->missingEditorialTypes($record['_question'], $contentById[$canonicalId], $record['enrichment'] ?? []);
             } elseif ($candidateRows !== [] && $mediaIds !== [] && count($mediaIds) === count($comparisons)) {
                 $reconciliation = 'blocked_media'; $action = 'blocked';
                 $reason = 'candidate_matches_text_but_media_bytes_or_placement_are_unverified';
@@ -766,7 +803,7 @@ final class CmBatchImportService
             }
 
             $taxonomyReconciliation = null;
-            if ($canonicalId !== null && in_array($reconciliation, ['link_existing', 'unchanged'], true)) {
+            if ($canonicalId !== null && in_array($reconciliation, ['link_existing', 'unchanged', 'enrich_existing'], true)) {
                 $taxonomyReconciliation = $this->planQuestionTaxonomyLinks(
                     $record['_question'],
                     $taxonomyPlan,
@@ -787,11 +824,13 @@ final class CmBatchImportService
                 'action' => $action,
                 'reconciliation' => $reconciliation,
                 'canonicalQuestionId' => $canonicalId,
+                'canonicalUpdatedAt' => $canonicalId !== null ? (string) ($comparisons[$canonicalId]['canonicalUpdatedAt'] ?? '') : null,
                 'matchedByExternalId' => $sourceMatches !== [],
                 'externalIdentityQuestionIds' => array_values(array_map(static fn (array $match): int => (int) $match['question_id'], $sourceMatches)),
                 'candidateQuestionIds' => array_values(array_map('intval', array_keys($candidateRows))),
                 'candidateComparisons' => $comparisons,
                 'taxonomyReconciliation' => $taxonomyReconciliation,
+                'missingEditorialTypes' => $missingEditorialTypes,
                 'reason' => $reason,
             ]);
         }
@@ -811,7 +850,7 @@ final class CmBatchImportService
         $groupJoin = $hasGroups && isset($questionColumns['grupo_questao_id'])
             ? 'LEFT JOIN questions_groups g ON g.id = q.grupo_questao_id'
             : 'LEFT JOIN (SELECT NULL AS id, NULL AS enunciado, NULL AS texto, NULL AS image_url, NULL AS assets_json) g ON 1=0';
-        $fields = ['source_provider', 'source_external_id', 'source_exam_key', 'tipo', 'enunciado', 'intro_text', 'reference_text', 'data_json', 'import_fingerprint', 'grupo_questao_id', 'support_context_key', 'has_image'];
+        $fields = ['source_provider', 'source_external_id', 'source_exam_key', 'tipo', 'enunciado', 'intro_text', 'reference_text', 'data_json', 'import_fingerprint', 'grupo_questao_id', 'support_context_key', 'has_image', 'updated_at'];
         $selectFields = ['q.id'];
         foreach ($fields as $field) $selectFields[] = isset($questionColumns[$field]) ? 'q.' . $field : 'NULL AS ' . $field;
         $stmt = $this->db->query(
@@ -828,7 +867,7 @@ final class CmBatchImportService
     {
         $questionIds = array_values(array_unique(array_filter(array_map('intval', $questionIds), static fn (int $id): bool => $id > 0)));
         $relations = [];
-        foreach ($questionIds as $id) $relations[$id] = ['contexts' => [], 'assets' => [], 'options' => [], 'contextAssets' => []];
+        foreach ($questionIds as $id) $relations[$id] = ['contexts' => [], 'assets' => [], 'options' => [], 'contextAssets' => [], 'editorials' => []];
         foreach (array_chunk($questionIds, 400) as $chunkIndex => $chunk) {
             if ($chunk === []) continue;
             $holders = [];
@@ -843,6 +882,11 @@ final class CmBatchImportService
                 $stmt = $this->db->prepare('SELECT id,question_id,external_key,display_order,label,body,body_clean,metadata_json FROM question_options WHERE question_id IN (' . $in . ') ORDER BY question_id,display_order,id');
                 $stmt->execute($bindings);
                 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $option) $relations[(int) $option['question_id']]['options'][] = $option;
+            }
+            if ($this->tableExists('question_editorials')) {
+                $stmt = $this->db->prepare('SELECT question_id,editorial_type,body,status FROM question_editorials WHERE question_id IN (' . $in . ') ORDER BY id');
+                $stmt->execute($bindings);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $editorial) $relations[(int) $editorial['question_id']]['editorials'][] = $editorial;
             }
             if ($this->tableExists('question_context_questions') && $this->tableExists('question_contexts')) {
                 $stmt = $this->db->prepare('SELECT rel.question_id,c.id AS context_id,c.external_key,c.context_type,c.body,c.body_clean,c.reference_text,c.metadata_json FROM question_context_questions rel INNER JOIN question_contexts c ON c.id=rel.context_id WHERE rel.question_id IN (' . $in . ') ORDER BY rel.question_id,c.id');
@@ -903,6 +947,39 @@ final class CmBatchImportService
             }
         }
         return $relations;
+    }
+
+    /** @return list<string> */
+    private function missingEditorialTypes(array $question, array $stored, array $enrichment = []): array
+    {
+        $incoming = [];
+        foreach (is_array($question['editorial'] ?? null) ? $question['editorial'] : [] as $entry) {
+            if (!is_array($entry) || trim((string) ($entry['body'] ?? '')) === '') continue;
+            $type = (string) ($entry['type'] ?? '');
+            if (in_array($type, ['teacher_comment', 'detailed_analysis'], true)) $incoming[$type] = true;
+        }
+        $annotations = $enrichment['editorialAnnotations'] ?? [];
+        if (is_array($annotations)) {
+            foreach ($annotations as $key => $entry) {
+                if (!is_array($entry)) $entry = ['type' => (string) $key, 'body' => $entry];
+                $type = (string) ($entry['type'] ?? $entry['editorialType'] ?? '');
+                $body = (string) ($entry['body'] ?? $entry['content'] ?? $entry['text'] ?? '');
+                if (trim($body) !== '' && in_array($type, ['teacher_comment', 'detailed_analysis'], true)) $incoming[$type] = true;
+            }
+        }
+        $existing = [];
+        foreach ($stored['_relations']['editorials'] ?? [] as $entry) {
+            if (trim((string) ($entry['body'] ?? '')) !== '') $existing[(string) ($entry['editorial_type'] ?? '')] = true;
+        }
+        $data = json_decode((string) ($stored['data_json'] ?? ''), true);
+        $data = is_array($data) ? $data : [];
+        foreach ([
+            'teacher_comment' => $data['teacherComment'] ?? $data['editorialComments']['teacherComment'] ?? null,
+            'detailed_analysis' => $data['detailedComment'] ?? $data['editorialComments']['detailedComment'] ?? null,
+        ] as $type => $body) {
+            if (trim((string) $body) !== '') $existing[$type] = true;
+        }
+        return array_values(array_diff(array_keys($incoming), array_keys($existing)));
     }
 
     /** @param list<int> $questionIds @return array<int,list<int>> */
@@ -1110,10 +1187,10 @@ final class CmBatchImportService
         $incomingContextBody = $this->normalizeQuestionText((string) ($incomingContext['body'] ?? $incomingContext['texto'] ?? $incomingContext['text'] ?? ''));
         $storedContextBody = $this->normalizeQuestionText((string) (($row['group_enunciado'] ?? '') ?: ($row['group_text'] ?? '') ?: ($data['supportContextText'] ?? '')));
         $storedHasContext = (int) ($row['grupo_questao_id'] ?? 0) > 0 || trim((string) ($row['support_context_key'] ?? $data['supportContextKey'] ?? '')) !== '';
-        if (($contextKey !== '' && ($incomingContextBody === '' || $storedContextBody === '')) || ($contextKey === '' && $storedHasContext)) {
-            return ['status' => 'context_unverified', 'reason' => 'shared_context_not_proven_equal'];
-        }
-        if ($incomingContextBody !== $storedContextBody) return ['status' => 'different', 'reason' => 'shared_context_differs'];
+        $incomingHasContext = $contextKey !== '' && $incomingContextBody !== '';
+        $contextNeedsEnrichment = $incomingHasContext && !$storedHasContext;
+        if ($incomingHasContext && $storedHasContext && $incomingContextBody !== $storedContextBody) return ['status' => 'different', 'reason' => 'shared_context_differs'];
+        if (!$incomingHasContext && !$storedHasContext && $contextKey !== '') return ['status' => 'context_unverified', 'reason' => 'incoming_shared_context_not_resolved'];
 
         if ($this->incomingContainsMedia($question, $record['_contexts']) || $this->storedContainsMedia($row, $data)) {
             if ($storedFingerprint === null) return ['status' => 'media_unverified', 'reason' => 'source_binary_or_stored_asset_placement_not_verified'];
@@ -1124,6 +1201,7 @@ final class CmBatchImportService
             || $this->normalizeQuestionText((string) ($question['content']['reference'] ?? '')) !== $this->normalizeQuestionText((string) ($row['reference_text'] ?? $data['referenceText'] ?? ''))) {
             return ['status' => 'different', 'reason' => 'support_or_reference_differs'];
         }
+        if ($contextNeedsEnrichment) return ['status' => 'context_missing_existing', 'reason' => 'incoming_context_adds_to_existing_question'];
         return ['status' => 'exact', 'reason' => 'statement_alternatives_context_support_and_reference_match'];
     }
 

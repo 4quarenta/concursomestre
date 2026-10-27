@@ -53,6 +53,8 @@ class RateLimiter
         // autenticada, mas nao pode compartilhar o limite curto da consulta
         // avulsa de questoes, ou a propria sincronizacao se auto-bloqueia.
         'admin_taxonomy_sync' => ['max' => 600, 'window' => 900],
+        // A single reviewed batch may require many bounded worker checkpoints.
+        'admin_cm_batch_worker' => ['max' => 300, 'window' => 900],
     ];
 
     /**

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { AlertTriangle, Archive, CheckCircle2, Download, FileCheck2, Loader2, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Archive, CheckCircle2, Download, FileCheck2, Loader2, Pause, Play, ShieldCheck, Square } from 'lucide-react';
 import { fetchAuthenticatedResource } from '@services/api/client';
 import { getCsrfToken } from '@services/auth/session';
 
@@ -11,6 +11,8 @@ type CmBatchJob = {
   archiveSha256: string;
   datasetLabel: string;
   status: string;
+  progress?: { completedExams?: number; completedQuestions?: number; failed?: number; blocked?: number; pending?: number; totalExams?: number; totalQuestions?: number } | null;
+  items?: Array<{ id: number; entityType: string; externalKey: string; action: string; status: string; canonicalId: string | null; attempts: number; diagnostics: { message?: string; code?: string } }>;
   planHash: string | null;
   manifest: { yearsCovered?: number[] };
   plan: {
@@ -29,7 +31,7 @@ type CmBatchJob = {
       questionSamples: Array<{ tempId: string; questionNumber: number | string | null; statement: string; type: string; reviewStatus: string; answerStatus: string }>;
     }>;
     warnings: Array<{ code: string; examExternalKey?: string; questionTempId?: string }>;
-    questions: { total: number; needsReview: number; pendingPublication: number; publishable: number; actions: Record<string, number> };
+    questions: { total: number; needsReview: number; pendingPublication: number; publishable: number; actions: Record<string, number>; items?: Array<{ action: string; examExternalKey: string; tempId: string; questionNumber?: number | string | null; externalQuestionId?: string | null; reason?: string; externalIdentityQuestionIds?: number[]; candidateQuestionIds?: number[] }> };
     mediaCount: number;
     blockers: string[];
   };
@@ -39,6 +41,7 @@ export default function CmBatchZipImporter() {
   const [file, setFile] = useState<File | null>(null);
   const [job, setJob] = useState<CmBatchJob | null>(null);
   const [busy, setBusy] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
   const [selectedKey, setSelectedKey] = useState('');
   const [search, setSearch] = useState('');
@@ -47,6 +50,10 @@ export default function CmBatchZipImporter() {
   const [reason, setReason] = useState('');
   const requestVersion = useRef(0);
   const selected = job?.plan.taxonomy.entities.find((entity) => `${entity.category}:${entity.key}` === selectedKey);
+  const taxonomyReady = Boolean(job?.plan.taxonomy.entities.every((entity) => ['matched_existing', 'creation_proposed'].includes(entity.status)));
+  const canStart = Boolean(job?.jobId && job.status === 'needs_review' && job.planHash && taxonomyReady && !busy);
+  const skippedExamKeys = new Set((job?.plan.exams ?? []).filter((exam) => ['blocked', 'conflict', 'needs_review'].includes(exam.action)).map((exam) => exam.externalKey));
+  const skippedQuestionItems = (job?.plan.questions.items ?? []).filter((question) => ['blocked', 'conflict', 'needs_review'].includes(question.action) || skippedExamKeys.has(question.examExternalKey));
 
   const searchCandidates = async () => {
     if (!job?.jobId || !selected || busy) return;
@@ -115,6 +122,67 @@ export default function CmBatchZipImporter() {
     }
   };
 
+  const postAction = async (values: Record<string, string>) => {
+    const csrfToken = getCsrfToken();
+    if (!csrfToken) throw new Error('Atualize a sessão antes de continuar.');
+    const form = new FormData();
+    Object.entries(values).forEach(([key, value]) => form.set(key, value));
+    const response = await fetchAuthenticatedResource('admin/cm_batch.php', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, body: form });
+    const payload = await response.json();
+    if (!response.ok || payload.success === false) throw new Error(payload.message || 'Não foi possível atualizar a importação.');
+    return payload.data ?? payload;
+  };
+
+  const processUntilStopped = async (currentJob: CmBatchJob) => {
+    let latest = currentJob;
+    setProcessing(true);
+    try {
+      while (['queued', 'running'].includes(latest.status)) {
+        await new Promise((resolve) => window.setTimeout(resolve, 800));
+        const result = await postAction({ action: 'process', jobId: latest.jobId ?? '', limit: '5' });
+        latest = result.job as CmBatchJob;
+        setJob(latest);
+      }
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const approveAndStart = async () => {
+    if (!job?.jobId || !job.planHash || !canStart) return;
+    if (skippedExamKeys.size + skippedQuestionItems.length > 0 && !window.confirm(`${skippedExamKeys.size} prova(s) e ${skippedQuestionItems.length} questão(ões) com identidade/conteúdo pendente serão puladas. Nenhuma duplicata será criada; os demais itens aptos serão vinculados ou enriquecidos como rascunhos. Deseja iniciar?`)) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await postAction({ action: 'approve_and_start', jobId: job.jobId, planHash: job.planHash, archiveSha256: job.archiveSha256, limit: '5' });
+      const latest = result.job as CmBatchJob;
+      setJob(latest);
+      setBusy(false);
+      await processUntilStopped(latest);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Falha ao iniciar a importação.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const transition = async (operation: 'pause' | 'resume' | 'cancel' | 'retry') => {
+    if (!job?.jobId || (busy && !processing)) return;
+    setBusy(true);
+    setError('');
+    try {
+      const next = await postAction({ action: 'transition', jobId: job.jobId, operation });
+      const latest = next as CmBatchJob;
+      setJob(latest);
+      setBusy(false);
+      if (operation === 'resume' || operation === 'retry') await processUntilStopped(latest);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Falha ao alterar a fila.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const downloadReport = () => {
     if (!job) return;
     const blob = new Blob([JSON.stringify(job, null, 2)], { type: 'application/json' });
@@ -159,7 +227,7 @@ export default function CmBatchZipImporter() {
               <h3 className="font-semibold text-slate-900 dark:text-slate-100">{job.datasetLabel}</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">Lote {job.batchId} · SHA-256 {job.archiveSha256.slice(0, 16)}… · {job.manifest.yearsCovered?.join(', ')}</p>
             </div>
-            <div className="flex items-center gap-2"><button type="button" onClick={downloadReport} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><Download size={14} /> Baixar relatório</button><span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"><AlertTriangle size={14} /> Revisão necessária</span></div>
+            <div className="flex items-center gap-2"><button type="button" onClick={downloadReport} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><Download size={14} /> Baixar relatório</button><span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"><AlertTriangle size={14} /> {job.status === 'completed' ? 'Concluída' : job.status === 'failed' ? 'Falha' : job.status === 'paused' ? 'Pausada' : job.status === 'running' || job.status === 'queued' ? 'Em andamento' : 'Revisão necessária'}</span></div>
           </div>
 
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -171,7 +239,20 @@ export default function CmBatchZipImporter() {
             ].map(([label, value]) => <div key={label} className="rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700"><dt className="text-xs text-slate-500 dark:text-slate-400">{label}</dt><dd className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">{value}</dd></div>)}
           </dl>
 
-          <p className="text-sm text-slate-600 dark:text-slate-300">Plano de questões: <strong>{job.plan.questions.actions.create ?? 0}</strong> novas como rascunho, <strong>{job.plan.questions.actions.link ?? 0}</strong> vínculos por conteúdo idêntico e <strong>{job.plan.questions.actions.conflict ?? 0}</strong> conflitos bloqueados.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-300">Plano de questões: <strong>{job.plan.questions.actions.create ?? 0}</strong> novas como rascunho, <strong>{job.plan.questions.actions.link_existing ?? 0}</strong> já existentes e vinculadas, <strong>{job.plan.questions.actions.enrich_existing ?? 0}</strong> existentes que receberão apenas dados faltantes e <strong>{skippedQuestionItems.length}</strong> questões que serão puladas por pendência.</p>
+
+          {skippedQuestionItems.length > 0 && <details className="rounded-md border border-amber-200 p-3 text-sm dark:border-amber-900/50">
+            <summary className="cursor-pointer font-semibold text-amber-900 dark:text-amber-200">Questões que serão puladas para evitar duplicatas ({skippedQuestionItems.length})</summary>
+            <ul className="mt-2 max-h-64 space-y-2 overflow-y-auto text-xs text-slate-700 dark:text-slate-300">
+              {skippedQuestionItems.map((question) => <li key={`${question.examExternalKey}:${question.tempId}`} className="border-t border-amber-100 pt-2 first:border-0 dark:border-amber-900/40">
+                <strong>{question.examExternalKey} · Questão {question.questionNumber ?? question.tempId}</strong>
+                {question.externalQuestionId ? <span className="ml-2">ID Gran: {question.externalQuestionId}</span> : null}
+                <span className="ml-2 text-slate-500 dark:text-slate-400">{question.reason || 'Conteúdo divergente ou identidade ambígua'}</span>
+                {question.externalIdentityQuestionIds?.length ? <span className="block">IDs existentes: {question.externalIdentityQuestionIds.join(', ')}</span> : null}
+                {question.candidateQuestionIds?.length ? <span className="block">Candidatos: {question.candidateQuestionIds.join(', ')}</span> : null}
+              </li>)}
+            </ul>
+          </details>}
 
           <div className="space-y-3 border-y border-slate-200 py-4 dark:border-slate-700">
             <h3 className="font-semibold">Revisar taxonomias</h3>
@@ -206,7 +287,7 @@ export default function CmBatchZipImporter() {
           <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
             <table className="w-full min-w-[520px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-800/70 dark:text-slate-400"><tr><th className="px-3 py-2">Prova</th><th className="px-3 py-2">Ano oficial</th><th className="px-3 py-2">Questões</th><th className="px-3 py-2">Pendente</th><th className="px-3 py-2">Ação planejada</th><th className="px-3 py-2">Amostra</th></tr></thead>
-              <tbody>{job.plan.exams.map((exam) => <tr key={exam.externalKey} className="border-t border-slate-200 dark:border-slate-700"><td className="px-3 py-2 font-medium text-slate-800 dark:text-slate-200"><span>{exam.metadata.examTitle || exam.externalKey}</span><span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-slate-400">{exam.provenance.source?.provider}:{exam.provenance.source?.externalExamId}{exam.missingFields.length > 0 ? ` · ausente: ${exam.missingFields.join(', ')}` : ''}</span></td><td className="px-3 py-2">{exam.correctYear}</td><td className="px-3 py-2">{exam.questionCount}</td><td className="px-3 py-2">{exam.needsReview}</td><td className="px-3 py-2">{exam.action === 'link' ? 'Vincular existente' : exam.action === 'conflict' ? 'Conflito' : 'Criar rascunho'}</td><td className="px-3 py-2"><details><summary className="cursor-pointer text-indigo-700 dark:text-indigo-300">Ver amostra</summary><ul className="mt-2 min-w-64 space-y-2 text-xs normal-case text-slate-600 dark:text-slate-300">{exam.questionSamples.map((question) => <li key={question.tempId}><span className="font-semibold">#{question.questionNumber ?? '—'} · {question.answerStatus}</span><p className="mt-0.5">{question.statement}</p></li>)}</ul></details></td></tr>)}</tbody>
+              <tbody>{job.plan.exams.map((exam) => <tr key={exam.externalKey} className="border-t border-slate-200 dark:border-slate-700"><td className="px-3 py-2 font-medium text-slate-800 dark:text-slate-200"><span>{exam.metadata.examTitle || exam.externalKey}</span><span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-slate-400">{exam.provenance.source?.provider}:{exam.provenance.source?.externalExamId}{exam.missingFields.length > 0 ? ` · ausente: ${exam.missingFields.join(', ')}` : ''}</span></td><td className="px-3 py-2">{exam.correctYear}</td><td className="px-3 py-2">{exam.questionCount}</td><td className="px-3 py-2">{exam.needsReview}</td><td className="px-3 py-2">{exam.action === 'link' ? 'Vincular existente' : exam.action === 'conflict' || exam.action === 'needs_review' ? 'Pular para revisão' : 'Criar rascunho'}</td><td className="px-3 py-2"><details><summary className="cursor-pointer text-indigo-700 dark:text-indigo-300">Ver amostra</summary><ul className="mt-2 min-w-64 space-y-2 text-xs normal-case text-slate-600 dark:text-slate-300">{exam.questionSamples.map((question) => <li key={question.tempId}><span className="font-semibold">#{question.questionNumber ?? '—'} · {question.answerStatus}</span><p className="mt-0.5">{question.statement}</p></li>)}</ul></details></td></tr>)}</tbody>
             </table>
           </div>
 
@@ -214,9 +295,27 @@ export default function CmBatchZipImporter() {
 
           <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
             <ShieldCheck size={18} className="mt-0.5 shrink-0" />
-            <div><p className="font-semibold">Prévia sem gravação canônica</p><p className="mt-1">As questões do lote exigem revisão. Gabaritos e taxonomias ainda não foram confirmados; nenhum item será publicado ou importado nesta etapa.</p></div>
+            <div><p className="font-semibold">Importação aditiva e sem publicação</p><p className="mt-1">Questões Gran existentes são reutilizadas; taxonomias e comentários/análises só preenchem dados ausentes, sem substituir conteúdo existente. Provas e questões novas ficam como rascunho privado. Gabaritos permanecem não verificados. Conflitos e mídias pendentes são pulados.</p></div>
           </div>
-          <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400"><CheckCircle2 size={14} /> {job.jobId ? 'Arquivo validado e mantido em armazenamento privado para revisão.' : 'Validação sem gravação. Salve a prévia para registrar decisões.'}</p>
+          {job.progress && <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm"><strong>Progresso da fila</strong><span>{job.progress.completedExams ?? 0}/{job.progress.totalExams ?? job.plan.exams.length} provas · {job.progress.completedQuestions ?? 0}/{job.progress.totalQuestions ?? job.plan.questions.total} questões</span></div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full bg-indigo-600 transition-all" style={{ width: `${Math.min(100, (((job.progress.completedExams ?? 0) + (job.progress.completedQuestions ?? 0)) / Math.max(1, (job.progress.totalExams ?? job.plan.exams.length) + (job.progress.totalQuestions ?? job.plan.questions.total))) * 100)}%` }} /></div>
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{job.progress.pending ?? 0} pendentes · {job.progress.blocked ?? 0} bloqueados · {job.progress.failed ?? 0} falhas</p>
+          </div>}
+          {(job.items ?? []).some((item) => item.status === 'failed') && <details className="rounded-md border border-rose-200 p-3 text-sm dark:border-rose-900/50">
+            <summary className="cursor-pointer font-semibold text-rose-800 dark:text-rose-300">Ver itens com falha ({(job.items ?? []).filter((item) => item.status === 'failed').length})</summary>
+            <ul className="mt-2 space-y-2 text-xs text-rose-800 dark:text-rose-200">{(job.items ?? []).filter((item) => item.status === 'failed').map((item) => <li key={item.id}><strong>{item.entityType} · {item.externalKey}</strong><span className="block">{item.diagnostics.message || item.diagnostics.code || 'Falha sem detalhe disponível.'}</span></li>)}</ul>
+          </details>}
+          <div className="flex flex-wrap items-center gap-2">
+            {job.status === 'needs_review' && <button type="button" onClick={() => void approveAndStart()} disabled={!canStart} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"><Play size={16} />Aprovar e iniciar importação</button>}
+            {['queued', 'running'].includes(job.status) && <button type="button" onClick={() => void transition('pause')} disabled={busy && !processing} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm dark:border-slate-700"><Pause size={15} />Pausar</button>}
+            {job.status === 'paused' && <button type="button" onClick={() => void transition('resume')} disabled={busy} className="inline-flex min-h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm text-white"><Play size={15} />Retomar</button>}
+            {job.status === 'failed' && <button type="button" onClick={() => void transition('retry')} disabled={busy} className="inline-flex min-h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm text-white"><Play size={15} />Tentar novamente</button>}
+            {['needs_review', 'queued', 'running', 'paused', 'failed'].includes(job.status) && <button type="button" onClick={() => void transition('cancel')} disabled={busy && !processing} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-rose-300 px-3 text-sm text-rose-700 dark:border-rose-900 dark:text-rose-300"><Square size={14} />Cancelar</button>}
+            {processing && <span role="status" className="text-xs text-slate-500 dark:text-slate-400">Processando em blocos...</span>}
+            {!canStart && job.status === 'needs_review' && <p className="text-xs text-slate-500 dark:text-slate-400">Para iniciar, resolva as taxonomias que ainda não puderam ser associadas com segurança.</p>}
+          </div>
+          <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400"><CheckCircle2 size={14} /> {job.jobId ? 'ZIP mantido em armazenamento privado; cada item é confirmado por checkpoint e pode ser retomado.' : 'Validação sem gravação. Salve a prévia para registrar decisões.'}</p>
         </div>
       )}
     </section>

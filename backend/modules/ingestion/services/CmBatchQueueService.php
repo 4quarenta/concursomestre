@@ -23,14 +23,40 @@ final class CmBatchQueueService
             }
             $savePlan = $this->db->prepare('UPDATE cm_batch_import_jobs SET dry_run_json=:plan WHERE job_id=:job');
             $savePlan->execute([':plan'=>json_encode($plan,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),':job'=>$jobId]);
-            foreach (array_merge($plan['exams'] ?? [],$plan['questions']['items'] ?? []) as $item) {
-                if ($item['action'] !== 'blocked' && !in_array($item['action'],['create','link','unchanged','enrich'],true)) {
-                    throw new DomainException('O lote possui itens bloqueados ou conflitantes.');
+            $skippedExamKeys = [];
+            foreach ($plan['exams'] ?? [] as $item) {
+                if (!in_array(($item['action'] ?? ''), ['blocked', 'conflict', 'needs_review', 'create', 'link'], true)) {
+                    throw new DomainException('O plano contém uma ação de prova não suportada.');
+                }
+                if (in_array(($item['action'] ?? ''), ['blocked', 'conflict', 'needs_review'], true)) $skippedExamKeys[(string) ($item['externalKey'] ?? '')] = true;
+            }
+            foreach ($plan['questions']['items'] ?? [] as $item) {
+                if (!in_array(($item['action'] ?? ''), ['blocked', 'conflict', 'needs_review', 'create', 'link', 'unchanged', 'enrich'], true)) {
+                    throw new DomainException('O plano contém uma ação de questão não suportada.');
                 }
             }
             $this->assertArchive($job);
-            $skip = $this->db->prepare("UPDATE cm_batch_import_items SET status='blocked', diagnostics_json=COALESCE(diagnostics_json, JSON_OBJECT('reason','blocked_by_dry_run')) WHERE job_id=:id AND action='blocked' AND status='planned'");
+            $skip = $this->db->prepare("UPDATE cm_batch_import_items SET action='blocked',status='blocked',diagnostics_json=COALESCE(diagnostics_json, JSON_OBJECT('reason','blocked_by_dry_run')) WHERE job_id=:id AND action IN ('blocked','conflict','needs_review') AND status='planned'");
             $skip->execute([':id'=>$jobId]);
+            $skippedQuestionKeys = [];
+            foreach ($plan['questions']['items'] ?? [] as $item) {
+                $examKey = (string) ($item['examExternalKey'] ?? '');
+                if (isset($skippedExamKeys[$examKey]) || in_array(($item['action'] ?? ''), ['blocked','conflict','needs_review'], true)) {
+                    $skippedQuestionKeys[] = substr($examKey . ':' . (string) ($item['tempId'] ?? ''), 0, 190);
+                }
+            }
+            foreach (array_chunk(array_values(array_unique($skippedQuestionKeys)), 300) as $chunkIndex => $chunk) {
+                if ($chunk === []) continue;
+                $holders = [];
+                $params = [':id' => $jobId];
+                foreach ($chunk as $index => $externalKey) {
+                    $placeholder = ':question_' . $chunkIndex . '_' . $index;
+                    $holders[] = $placeholder;
+                    $params[$placeholder] = $externalKey;
+                }
+                $skipQuestions = $this->db->prepare("UPDATE cm_batch_import_items SET action='blocked',status='blocked',diagnostics_json=JSON_OBJECT('reason','question_excluded_by_dry_run') WHERE job_id=:id AND entity_type='question' AND external_key IN (" . implode(',', $holders) . ") AND status='planned'");
+                $skipQuestions->execute($params);
+            }
             $stmt = $this->db->prepare("UPDATE cm_batch_import_jobs SET status='queued', approved_by_user_id=:actor, approved_at=CURRENT_TIMESTAMP WHERE job_id=:id");
             $stmt->execute([':actor'=>$this->actorId,':id'=>$jobId]);
             $this->db->commit();
@@ -118,7 +144,7 @@ final class CmBatchQueueService
             $retryable=$error instanceof PDOException && in_array((string)$error->getCode(),['40001','HY000'],true);
             $status=$retryable && $attempt<5 ? 'retry' : 'failed';
             $delay=min(300,2 ** min($attempt,8));
-            $diagnostic=['code'=>$retryable?'database_retry':'item_rejected','exceptionType'=>get_class($error),'attempt'=>$attempt];
+            $diagnostic=['code'=>$retryable?'database_retry':'item_rejected','exceptionType'=>get_class($error),'message'=>mb_substr(trim(preg_replace('/[\r\n\t]+/u',' ',$error->getMessage())??''),0,500),'attempt'=>$attempt];
             $stmt=$this->db->prepare("UPDATE cm_batch_import_items SET status=:status,attempt_count=:attempt,diagnostics_json=:diagnostic,next_attempt_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL $delay SECOND) WHERE id=:id");
             $stmt->execute([':status'=>$status,':attempt'=>$attempt,':diagnostic'=>json_encode($diagnostic,JSON_THROW_ON_ERROR),':id'=>$itemId]);
             if (in_array($job['status'],['queued','running'],true)) $this->refreshProgress($jobId);

@@ -16,7 +16,7 @@ final class CmBatchDraftQuestionImporter
     ) {
     }
 
-    public function import(string $actorId, string $jobId, int $examId, array $question, array $contexts, array $verifiedAssetHashes, array $resolvedFilterIds, array $occurrence): array
+    public function import(string $actorId, string $jobId, int $examId, array $question, array $contexts, array $verifiedAssetHashes, array $resolvedFilterIds, array $occurrence, ?int $canonicalQuestionId = null, ?string $canonicalUpdatedAt = null): array
     {
         if (!$this->db->inTransaction()) throw new LogicException('Importacao CM Batch exige transacao ativa.');
         $fingerprint = CmBatchQuestionIdentity::fingerprint($question, $contexts, $verifiedAssetHashes);
@@ -28,6 +28,22 @@ final class CmBatchDraftQuestionImporter
         $lookup = $this->db->prepare('SELECT id,import_fingerprint FROM questions WHERE import_fingerprint=:fingerprint FOR UPDATE');
         $lookup->execute([':fingerprint' => $fingerprint]);
         $existing = $lookup->fetch(PDO::FETCH_ASSOC);
+        if ($canonicalQuestionId !== null) {
+            $planned = $this->db->prepare('SELECT id,import_fingerprint,updated_at FROM questions WHERE id=:id FOR UPDATE');
+            $planned->execute([':id' => $canonicalQuestionId]);
+            $plannedRow = $planned->fetch(PDO::FETCH_ASSOC);
+            if (!$plannedRow) throw new DomainException('Questao canonica da previa nao existe mais; gere uma nova previa.');
+            if ($existing && (int) $existing['id'] !== $canonicalQuestionId) throw new DomainException('ID Gran e previa apontam para questoes canonicas diferentes.');
+            $currentUpdatedAt = trim((string) ($plannedRow['updated_at'] ?? ''));
+            $plannedUpdatedAt = trim((string) ($canonicalUpdatedAt ?? ''));
+            $sameVersion = $plannedUpdatedAt !== '' && hash_equals($plannedUpdatedAt, $currentUpdatedAt);
+            $sameFingerprint = hash_equals(strtolower((string) ($plannedRow['import_fingerprint'] ?? '')), strtolower($fingerprint));
+            if (($plannedUpdatedAt !== '' || $currentUpdatedAt !== '') ? !$sameVersion : !$sameFingerprint) {
+                throw new DomainException('A questao existente mudou apos a previa; revise novamente antes de vincular.');
+            }
+            if ($existing && (int) $existing['id'] !== $canonicalQuestionId) throw new DomainException('A identidade da questao mudou apos a previa.');
+            $existing = $plannedRow;
+        }
         $provider = strtolower(trim((string) ($occurrence['provider'] ?? '')));
         $externalId = trim((string) ($occurrence['externalQuestionId'] ?? ''));
         if ($externalId !== '') {
@@ -43,17 +59,19 @@ final class CmBatchDraftQuestionImporter
                 if ($legacyMatch && $sourceMatch && (int) $legacyMatch['id'] !== (int) $sourceMatch['id']) throw new DomainException('O ID Gran aponta para questoes canonicas divergentes.');
                 $sourceMatch = $legacyMatch ?: $sourceMatch;
             }
-            if ($sourceMatch && (!hash_equals((string) $sourceMatch['import_fingerprint'], $fingerprint) || ($existing && (int) $existing['id'] !== (int) $sourceMatch['id']))) {
+            if ($sourceMatch && (($canonicalQuestionId === null && !hash_equals((string) $sourceMatch['import_fingerprint'], $fingerprint)) || ($canonicalQuestionId !== null && (int) $sourceMatch['id'] !== $canonicalQuestionId) || ($existing && (int) $existing['id'] !== (int) $sourceMatch['id']))) {
                 throw new DomainException('Identidade externa diverge do conteudo canonico.');
             }
             $existing = $sourceMatch ?: $existing;
         }
         [$filters, $allIds] = $this->resolveFilters($resolvedFilterIds);
+        $mediaUrls = $this->validateMediaAndContent($question, $contexts);
         if ($existing) {
             $questionId = (int) $existing['id'];
-            $action = 'link_existing_question';
+            $this->mergeMissingContext($questionId, $question, $contexts, $mediaUrls, $examId, $fingerprint, $actorId);
+            $addedEditorial = $this->mergeMissingEditorial($questionId, $question, $actorId, $jobId, $mediaUrls);
+            $action = $addedEditorial ? 'enrich_existing_question' : 'link_existing_question';
         } else {
-            $mediaUrls = $this->validateMediaAndContent($question, $contexts);
             $contextId = $this->persistContext($question, $contexts, $mediaUrls, $examId, $fingerprint, $actorId);
             $question['id'] = null;
             $question['source'] = ['origin' => 'exam', 'examId' => $examId, 'questionNumber' => (int) $occurrence['questionNumber'], 'sourcePage' => $occurrence['sourcePage'] ?? null];
@@ -82,6 +100,94 @@ final class CmBatchDraftQuestionImporter
         return ['canonicalId' => $questionId, 'occurrenceId' => $occurrenceId, 'action' => $action];
     }
 
+    private function mergeMissingEditorial(int $questionId, array $question, string $actorId, string $jobId, array $mediaUrls): bool
+    {
+        $editorials = array_values(array_filter($question['editorial'] ?? [], static fn($entry): bool =>
+            is_array($entry)
+            && in_array(($entry['type'] ?? ''), ['teacher_comment', 'detailed_analysis'], true)
+            && trim((string) ($entry['body'] ?? '')) !== ''
+        ));
+        if ($editorials === []) return false;
+
+        $find = $this->db->prepare('SELECT id,title,body,status,generated_by,metadata_json FROM question_editorials WHERE question_id=:question AND editorial_type=:type ORDER BY id FOR UPDATE');
+        $insert = $this->db->prepare("INSERT INTO question_editorials (question_id,editorial_type,title,body,status,generated_by,metadata_json) VALUES (:question,:type,:title,:body,'draft',:generated,:metadata)");
+        $fill = $this->db->prepare("UPDATE question_editorials SET title=COALESCE(title,:title),body=:body,status='draft',generated_by=COALESCE(generated_by,:generated),metadata_json=:metadata WHERE id=:id AND TRIM(COALESCE(body,''))=''");
+        $audit = $this->db->prepare("INSERT INTO cm_batch_field_audit (job_id,entity_type,canonical_entity_id,field_name,before_json,after_json,source_evidence_json,actor_user_id,merge_reason,status) VALUES (:job,'question',:entity,:field,:before,:after,:evidence,:actor,'fill_missing_editorial_only','applied')");
+        $added = [];
+        foreach ($editorials as $editorial) {
+            CmBatchHtmlPolicy::assertSafe((string) $editorial['body'], $mediaUrls);
+            $type = (string) $editorial['type'];
+            $find->execute([':question' => $questionId, ':type' => $type]);
+            $existingRows = $find->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $hasExistingBody = false;
+            foreach ($existingRows as $row) if (trim((string) ($row['body'] ?? '')) !== '') $hasExistingBody = true;
+            if ($hasExistingBody) continue;
+            $existing = $existingRows[0] ?? null;
+            if ($existing && strtolower((string) ($existing['status'] ?? '')) === 'approved') continue;
+
+            $metadata = json_encode(is_array($editorial['metadata'] ?? null) ? $editorial['metadata'] : [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            $before = $existing ? ['title' => $existing['title'], 'body' => $existing['body'], 'status' => $existing['status'], 'metadata' => $existing['metadata_json']] : null;
+            $after = ['type' => $type, 'title' => trim((string) ($editorial['title'] ?? '')) ?: null, 'body' => (string) $editorial['body'], 'status' => 'draft', 'metadata' => json_decode($metadata, true)];
+            if ($existing) {
+                $fill->execute([':title' => $after['title'], ':body' => $after['body'], ':generated' => trim((string) ($editorial['generatedBy'] ?? '')) ?: null, ':metadata' => $metadata, ':id' => (int) $existing['id']]);
+                if ($fill->rowCount() < 1) continue;
+            } else {
+                $insert->execute([':question' => $questionId, ':type' => $type, ':title' => $after['title'], ':body' => $after['body'], ':generated' => trim((string) ($editorial['generatedBy'] ?? '')) ?: null, ':metadata' => $metadata]);
+            }
+            $audit->execute([
+                ':job' => $jobId,
+                ':entity' => (string) $questionId,
+                ':field' => $type,
+                ':before' => $before === null ? null : json_encode($before, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+                ':after' => json_encode($after, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+                ':evidence' => json_encode(['source' => 'cm-batch.v1', 'jobId' => $jobId], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+                ':actor' => $actorId,
+            ]);
+            $added[] = $type;
+        }
+        if ($added !== []) {
+            $set = [];
+            $params = [':id' => $questionId];
+            foreach ($added as $type) {
+                $column = $type === 'teacher_comment' ? 'has_teacher_comment' : 'has_detailed_comment';
+                $set[] = "$column = 1";
+            }
+            $this->db->prepare('UPDATE questions SET ' . implode(', ', array_unique($set)) . ' WHERE id=:id')->execute($params);
+        }
+        return $added !== [];
+    }
+
+    private function mergeMissingContext(int $questionId, array $question, array $contexts, array $mediaUrls, int $examId, string $fingerprint, string $actorId): void
+    {
+        $contextKey = trim((string) ($question['source']['contextTempId'] ?? ''));
+        if ($contextKey === '') return;
+        $links = $this->db->prepare('SELECT c.id,c.body FROM question_context_questions rel INNER JOIN question_contexts c ON c.id=rel.context_id WHERE rel.question_id=:question ORDER BY c.id FOR UPDATE');
+        $links->execute([':question' => $questionId]);
+        $existingContexts = $links->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $incoming = $this->findContext($contexts, $contextKey);
+        if ($existingContexts !== []) {
+            if (count($existingContexts) !== 1 || $this->normalizeContextBody((string) ($existingContexts[0]['body'] ?? '')) !== $this->normalizeContextBody((string) ($incoming['body'] ?? ''))) {
+                throw new DomainException('O contexto canonico mudou apos a previa; revise antes de enriquecer.');
+            }
+            return;
+        }
+        $contextId = $this->persistContext($question, $contexts, $mediaUrls, $examId, $fingerprint, $actorId);
+        if ($contextId !== null) $this->canonicalRepository->linkQuestionContext($contextId, $questionId, 'shared');
+    }
+
+    private function findContext(array $contexts, string $contextKey): array
+    {
+        $matches = array_values(array_filter($contexts, static fn($context): bool => is_array($context) && (string) ($context['tempId'] ?? '') === $contextKey));
+        if (count($matches) !== 1) throw new DomainException('Contexto ausente ou ambiguo.');
+        return $matches[0];
+    }
+
+    private function normalizeContextBody(string $body): string
+    {
+        $decoded = html_entity_decode($body, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        return preg_replace('/\s+/u', ' ', trim($decoded)) ?? trim($decoded);
+    }
+
     private function resolveFilters(array $resolvedFilterIds): array
     {
         $filters = $allIds = [];
@@ -105,11 +211,50 @@ final class CmBatchDraftQuestionImporter
         $mediaUrls = [];
         foreach ($question['assets'] ?? [] as $asset) {
             $url = (string) ($asset['url'] ?? '');
-            if (!preg_match('~^/api/admin/cm_batch_media\.php\?sha=[a-f0-9]{64}$~', $url)) throw new DomainException('Midia precisa estar no storage privado controlado.');
+            $path = (string) (parse_url($url, PHP_URL_PATH) ?? '');
+            if (!preg_match('~^/api/admin/cm_batch_media\.php\?sha=[a-f0-9]{64}$~', $url) && !str_contains($path, '/question-assets/cm-batch/')) throw new DomainException('Midia precisa estar no storage verificado do CM Batch.');
             $mediaUrls[] = $url;
         }
-        foreach (['statement', 'supportText', 'reference'] as $field) CmBatchHtmlPolicy::assertSafe((string) ($question['content'][$field] ?? ''), $mediaUrls);
-        foreach ($question['alternatives'] ?? [] as $alternative) CmBatchHtmlPolicy::assertSafe((string) ($alternative['text'] ?? ''), $mediaUrls);
+        $contextKey = (string) ($question['source']['contextTempId'] ?? '');
+        foreach ($contexts as $context) {
+            if (!is_array($context) || ($context['tempId'] ?? '') !== $contextKey) continue;
+            foreach ($context['assets'] ?? [] as $asset) {
+                $url = (string) ($asset['url'] ?? '');
+                if (!filter_var($url, FILTER_VALIDATE_URL) && !str_starts_with($url, '/uploads/')) throw new DomainException('Midia de contexto precisa estar materializada no storage controlado.');
+                $mediaUrls[] = $url;
+            }
+            $contextBody = (string) ($context['body'] ?? '');
+            if (preg_match_all('/<img\b[^>]*\bsrc\s*=\s*(["\'])(.*?)\1/is', $contextBody, $matches) > 0) {
+                foreach ($matches[2] as $url) {
+                    $path = (string) (parse_url(html_entity_decode($url, ENT_QUOTES | ENT_HTML5, 'UTF-8'), PHP_URL_PATH) ?? '');
+                    if (!str_contains($path, '/question-assets/cm-batch/')) throw new DomainException('Imagem de contexto sem materializacao verificada.');
+                    $mediaUrls[] = html_entity_decode($url, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
+            }
+        }
+        foreach (['statement', 'supportText', 'reference'] as $field) {
+            $html = (string) ($question['content'][$field] ?? '');
+            if (preg_match_all('/<img\b[^>]*\bsrc\s*=\s*(["\'])(.*?)\1/is', $html, $matches) > 0) {
+                foreach ($matches[2] as $url) {
+                    $url = html_entity_decode($url, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    $path = (string) (parse_url($url, PHP_URL_PATH) ?? '');
+                    if (!str_contains($path, '/question-assets/cm-batch/')) throw new DomainException('Imagem do enunciado sem materializacao verificada.');
+                    $mediaUrls[] = $url;
+                }
+            }
+        }
+        foreach ($question['alternatives'] ?? [] as $alternative) {
+            $html = (string) ($alternative['text'] ?? '');
+            if (preg_match_all('/<img\b[^>]*\bsrc\s*=\s*(["\'])(.*?)\1/is', $html, $matches) > 0) {
+                foreach ($matches[2] as $url) {
+                    $url = html_entity_decode($url, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    $path = (string) (parse_url($url, PHP_URL_PATH) ?? '');
+                    if (!str_contains($path, '/question-assets/cm-batch/')) throw new DomainException('Imagem da alternativa sem materializacao verificada.');
+                    $mediaUrls[] = $url;
+                }
+            }
+            CmBatchHtmlPolicy::assertSafe($html, $mediaUrls);
+        }
         foreach ($question['editorial'] ?? [] as $editorial) CmBatchHtmlPolicy::assertSafe((string) ($editorial['body'] ?? ''), $mediaUrls);
         return $mediaUrls;
     }
@@ -118,14 +263,20 @@ final class CmBatchDraftQuestionImporter
     {
         $contextKey = (string) ($question['source']['contextTempId'] ?? '');
         if ($contextKey === '') return null;
-        $matches = array_values(array_filter($contexts, static fn(array $context): bool => ($context['tempId'] ?? '') === $contextKey));
-        if (count($matches) !== 1) throw new DomainException('Contexto ausente ou ambiguo.');
-        $context = $matches[0];
+        $context = $this->findContext($contexts, $contextKey);
         CmBatchHtmlPolicy::assertSafe((string) ($context['body'] ?? ''), $mediaUrls);
-        if (!empty($context['assets'])) throw new DomainException('Assets do contexto precisam de materializacao propria.');
-        $context['tempId'] = 'cm_' . hash('sha256', $examId . ':' . $fingerprint . ':' . $contextKey);
+        $context['tempId'] = 'cm_' . hash('sha256', $examId . ':' . $contextKey);
         $context['provaId'] = $examId;
         $context['source'] = [];
+        $existing = $this->db->prepare('SELECT id,body FROM question_contexts WHERE external_key=:key FOR UPDATE');
+        $existing->execute([':key' => $context['tempId']]);
+        $contextRow = $existing->fetch(PDO::FETCH_ASSOC);
+        if ($contextRow) {
+            if ($this->normalizeContextBody((string) $contextRow['body']) !== $this->normalizeContextBody((string) ($context['body'] ?? ''))) {
+                throw new DomainException('A identidade do contexto ja existe com conteudo divergente.');
+            }
+            return (int) $contextRow['id'];
+        }
         return $this->canonicalRepository->saveContext($context, $actorId);
     }
 

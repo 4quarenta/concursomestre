@@ -3039,18 +3039,21 @@ class QuestionsRepository
         $lock->execute([':key'=>$identity]);
         $lock=$this->db->prepare('SELECT identity_key FROM cm_batch_identity_locks WHERE identity_key=:key FOR UPDATE');
         $lock->execute([':key'=>$identity]);
-        $find=$this->db->prepare('SELECT p.id,p.ano FROM cm_batch_exam_source_identities s JOIN provas p ON p.id=s.exam_id WHERE s.source_provider=:provider AND s.source_external_id=:external AND s.edition_key=:edition FOR UPDATE');
+        $find=$this->db->prepare('SELECT p.id,p.nome,p.ano,p.banca_id,p.orgao_id,p.cargo_id,p.nivel_id,p.tipo_prova_id,p.carreira_id,p.metadata_json FROM cm_batch_exam_source_identities s JOIN provas p ON p.id=s.exam_id WHERE s.source_provider=:provider AND s.source_external_id=:external AND s.edition_key=:edition FOR UPDATE');
         $find->execute([':provider'=>$provider,':external'=>$externalId,':edition'=>$edition]);
         $existing=$find->fetch(PDO::FETCH_ASSOC);
         if (!$existing && $edition==='') {
-            $find=$this->db->prepare('SELECT id,ano FROM provas WHERE source_provider=:provider AND source_external_id=:external FOR UPDATE');
+            $find=$this->db->prepare('SELECT id,nome,ano,banca_id,orgao_id,cargo_id,nivel_id,tipo_prova_id,carreira_id,metadata_json FROM provas WHERE source_provider=:provider AND source_external_id=:external FOR UPDATE');
             $find->execute([':provider'=>$provider,':external'=>$externalId]);
             $rows=$find->fetchAll(PDO::FETCH_ASSOC);
             if(count($rows)>1)throw new DomainException('Identidade externa da prova ambigua.');
             $existing=$rows[0]??null;
         }
         if($existing && (int)$existing['ano']!==(int)$record['ano'])throw new DomainException('Ano oficial diverge da prova existente.');
-        if($existing) $id=(int)$existing['id'];
+        if($existing) {
+            $id=(int)$existing['id'];
+            $this->mergeMissingCmBatchExamFields($id, $existing, $record, $jobId);
+        }
         else {
             if(trim((string)($record['nome']??''))==='' || (int)$record['ano']<1900 || (int)$record['ano']>2100)throw new InvalidArgumentException('Titulo ou ano da prova invalido.');
             $record['slug']=mb_substr((string)$record['slug'],0,140).'-cm-'.substr($identity,0,24);
@@ -3072,6 +3075,81 @@ class QuestionsRepository
         $mapping=$this->db->prepare('INSERT INTO cm_batch_exam_source_identities (source_provider,source_external_id,edition_key,exam_id,created_by_job_id) VALUES (:provider,:external,:edition,:id,:job) ON DUPLICATE KEY UPDATE exam_id=exam_id');
         $mapping->execute([':provider'=>$provider,':external'=>$externalId,':edition'=>$edition,':id'=>$id,':job'=>$jobId]);
         return $id;
+    }
+
+    private function mergeMissingCmBatchExamFields(int $examId, array $existing, array $incoming, string $jobId): void
+    {
+        $columns = ['nome', 'banca_id', 'orgao_id', 'cargo_id', 'nivel_id', 'tipo_prova_id', 'carreira_id'];
+        $updates = [];
+        $bindings = [':id' => $examId];
+        $actorId = (string) ($incoming['updated_by_user_id'] ?? $incoming['created_by_user_id'] ?? 'system');
+        $audit = $this->db->prepare("INSERT INTO cm_batch_field_audit (job_id,entity_type,canonical_entity_id,field_name,before_json,after_json,source_evidence_json,actor_user_id,merge_reason,status) VALUES (:job,'exam',:entity,:field,:before,:after,:evidence,:actor,'fill_missing_exam_field_only','applied')");
+        foreach ($columns as $column) {
+            $current = $existing[$column] ?? null;
+            $value = $incoming[$column] ?? null;
+            if ($current !== null && $current !== '' && $current !== '0') continue;
+            if ($value === null || $value === '' || $value === '0') continue;
+            if ($column === 'nome') $value = mb_substr(trim((string) $value), 0, 255);
+            $placeholder = ':field_' . $column;
+            $updates[] = "$column = $placeholder";
+            $bindings[$placeholder] = $value;
+            $audit->execute([
+                ':job' => $jobId, ':entity' => (string) $examId, ':field' => $column,
+                ':before' => $current === null ? null : json_encode($current, JSON_THROW_ON_ERROR),
+                ':after' => json_encode($value, JSON_THROW_ON_ERROR),
+                ':evidence' => json_encode(['source' => 'cm-batch.v1'], JSON_THROW_ON_ERROR),
+                ':actor' => $actorId,
+            ]);
+        }
+
+        $currentMetadata = json_decode((string) ($existing['metadata_json'] ?? ''), true);
+        $currentMetadata = is_array($currentMetadata) ? $currentMetadata : [];
+        $incomingMetadata = json_decode((string) ($incoming['metadata_json'] ?? ''), true);
+        $incomingMetadata = is_array($incomingMetadata) ? $incomingMetadata : [];
+        $mergedMetadata = $this->mergeMissingCmBatchMetadata($currentMetadata, $incomingMetadata);
+        if ($mergedMetadata !== $currentMetadata) {
+            $updates[] = 'metadata_json = :metadata_json';
+            $bindings[':metadata_json'] = json_encode($mergedMetadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            $audit->execute([
+                ':job' => $jobId, ':entity' => (string) $examId, ':field' => 'metadata_json',
+                ':before' => json_encode($currentMetadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+                ':after' => $bindings[':metadata_json'],
+                ':evidence' => json_encode(['source' => 'cm-batch.v1'], JSON_THROW_ON_ERROR),
+                ':actor' => $actorId,
+            ]);
+        }
+        if ($updates !== []) {
+            $this->db->prepare('UPDATE provas SET ' . implode(', ', $updates) . ' WHERE id=:id')->execute($bindings);
+        }
+    }
+
+    private function mergeMissingCmBatchMetadata(array $current, array $incoming): array
+    {
+        foreach ($incoming as $key => $value) {
+            if (!array_key_exists($key, $current) || $current[$key] === null || $current[$key] === '') {
+                if ($value !== null && $value !== '') $current[$key] = $value;
+                continue;
+            }
+            if (!is_array($current[$key]) || !is_array($value)) continue;
+            if (!array_is_list($current[$key]) && !array_is_list($value)) {
+                $current[$key] = $this->mergeMissingCmBatchMetadata($current[$key], $value);
+                continue;
+            }
+            if (array_is_list($current[$key]) && array_is_list($value)) {
+                foreach ($value as $item) {
+                    $encoded = json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+                    $present = false;
+                    foreach ($current[$key] as $existingItem) {
+                        if (hash_equals($encoded, json_encode($existingItem, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR))) {
+                            $present = true;
+                            break;
+                        }
+                    }
+                    if (!$present) $current[$key][] = $item;
+                }
+            }
+        }
+        return $current;
     }
 
     public function saveImportedExam(array $record): int

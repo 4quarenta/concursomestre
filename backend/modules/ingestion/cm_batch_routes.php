@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/services/CmBatchImportService.php';
 require_once __DIR__ . '/services/CmBatchTaxonomyReviewService.php';
+require_once __DIR__ . '/services/CmBatchExecutionService.php';
 require_once __DIR__ . '/../../shared/auth/request_auth.php';
 require_once __DIR__ . '/../../shared/auth/AuthCookies.php';
 require_once __DIR__ . '/../../shared/middleware/RateLimiter.php';
@@ -22,6 +23,7 @@ function handleCmBatchImportRoute(PDO $db): void
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
         $service = new CmBatchImportService($db, $actorId);
         $review = new CmBatchTaxonomyReviewService($db, $actorId);
+        $execution = new CmBatchExecutionService($db, $actorId);
         if ($method === 'GET') {
             $jobId = trim((string) ($_GET['job_id'] ?? ''));
             if (($_GET['action'] ?? '') === 'taxonomy_candidates') {
@@ -35,10 +37,29 @@ function handleCmBatchImportRoute(PDO $db): void
         if (!assertValidCsrfToken(getCsrfTokenFromCookie(), getCsrfTokenFromRequest())) {
             Response::forbidden('CSRF token invalido.');
         }
-        RateLimiter::enforceProfile('upload', 'cm-batch:' . $actorId);
+        $action = (string) ($_POST['action'] ?? '');
+        RateLimiter::enforceProfile(
+            in_array($action, ['approve_and_start', 'process', 'transition', 'resolve_taxonomy'], true) ? 'admin_cm_batch_worker' : 'upload',
+            'cm-batch:' . $actorId
+        );
         if (($_POST['action'] ?? '') === 'resolve_taxonomy') {
             $review->decide($_POST);
             Response::success($service->getJob((string) ($_POST['jobId'] ?? '')), 'Decisao registrada na previa.');
+        }
+        if (($_POST['action'] ?? '') === 'approve_and_start') {
+            $jobId = trim((string) ($_POST['jobId'] ?? ''));
+            $planHash = trim((string) ($_POST['planHash'] ?? ''));
+            $archiveHash = trim((string) ($_POST['archiveSha256'] ?? ''));
+            $result = $execution->approveAndStart($jobId, $planHash, $archiveHash, (int) ($_POST['limit'] ?? 5));
+            Response::success($result, 'Importacao aprovada. A fila esta pronta para processar itens como rascunhos privados.');
+        }
+        if (($_POST['action'] ?? '') === 'process') {
+            $result = $execution->process(trim((string) ($_POST['jobId'] ?? '')), (int) ($_POST['limit'] ?? 5));
+            Response::success($result, 'Progresso da importacao atualizado.');
+        }
+        if (($_POST['action'] ?? '') === 'transition') {
+            (new CmBatchQueueService($db, $actorId))->transition(trim((string) ($_POST['jobId'] ?? '')), trim((string) ($_POST['operation'] ?? '')));
+            Response::success($service->getJob((string) ($_POST['jobId'] ?? '')), 'Estado da fila atualizado.');
         }
         if (!in_array((string) ($_POST['action'] ?? ''), ['preview', 'dry_run'], true)) {
             Response::error('Acao nao suportada. A importacao efetiva ainda depende da revisao do lote.', 409, null, 'review_required');
