@@ -16,6 +16,7 @@ require_once __DIR__ . '/../../seo/sitemaps/StaticSitemapMutationInvalidator.php
 require_once __DIR__ . '/ImportedExamIdentityPolicy.php';
 require_once __DIR__ . '/ImportedExamSlugPolicy.php';
 require_once __DIR__ . '/CmBatchLegacyExamYearRepair.php';
+require_once __DIR__ . '/../../../shared/questions/PublicQuestionVisibilitySql.php';
 
 /**
  * Repository oficial do dominio de questes.
@@ -1086,10 +1087,7 @@ class QuestionsRepository
         $searchReady = $scaleReady && $this->questionSearchDocumentsReady();
         $clauses = $scaleReady
             ? [
-                "q.publish_status IN ('published', 'scheduled')",
-                "q.visibility_status = 'public'",
-                'q.published_sort_at IS NOT NULL',
-                'q.published_sort_at <= NOW()',
+                PublicQuestionVisibilitySql::scaleColumns('q'),
             ]
             : [
                 "(q.publish_status = 'published' OR (q.publish_status = 'scheduled' AND q.scheduled_at IS NOT NULL AND q.scheduled_at <= NOW()))",

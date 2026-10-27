@@ -18,6 +18,7 @@
  */
 require_once __DIR__ . '/../../../shared/runtime/RuntimeStoreFactory.php';
 require_once __DIR__ . '/../../seo/sitemaps/StaticSitemapMutationInvalidator.php';
+require_once __DIR__ . '/../../../shared/questions/PublicQuestionVisibilitySql.php';
 
 class FiltersRepository
 {
@@ -73,10 +74,7 @@ class FiltersRepository
      */
     public function fetchPracticeCatalog(): array
     {
-        $publishedQuestionClause = "q.publish_status IN ('published', 'scheduled')
-            AND q.visibility_status = 'public'
-            AND q.published_sort_at IS NOT NULL
-            AND q.published_sort_at <= NOW()";
+        $publishedQuestionClause = PublicQuestionVisibilitySql::scaleColumns('q');
 
         $stmt = $this->db->prepare(
             "WITH RECURSIVE practice_filters AS (
