@@ -211,11 +211,11 @@ export default function CmBatchZipImporter() {
           onChange={(event) => { setFile(event.target.files?.[0] ?? null); setJob(null); setError(''); }}
           className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-medium dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:file:bg-slate-800"
         />
-        <button type="button" onClick={() => void validate(false)} disabled={!file || busy} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="button" onClick={() => void validate(true)} disabled={!file || busy} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
           {busy ? <Loader2 size={16} className="animate-spin" /> : <FileCheck2 size={16} />}
-          {busy ? 'Validando...' : 'Apenas validar'}
+          {busy ? 'Validando e preparando...' : 'Validar ZIP e preparar importação'}
         </button>
-        <button type="button" onClick={() => void validate(true)} disabled={!file || busy} className="min-h-10 rounded-md border border-slate-300 px-4 text-sm disabled:opacity-50 dark:border-slate-700">Salvar prévia para revisão</button>
+        <button type="button" onClick={() => void validate(false)} disabled={!file || busy} className="min-h-10 rounded-md border border-slate-300 px-4 text-sm disabled:opacity-50 dark:border-slate-700">Apenas validar sem salvar</button>
       </div>
 
       {error && <p role="alert" className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300">{error}</p>}
@@ -227,7 +227,7 @@ export default function CmBatchZipImporter() {
               <h3 className="font-semibold text-slate-900 dark:text-slate-100">{job.datasetLabel}</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">Lote {job.batchId} · SHA-256 {job.archiveSha256.slice(0, 16)}… · {job.manifest.yearsCovered?.join(', ')}</p>
             </div>
-            <div className="flex items-center gap-2"><button type="button" onClick={downloadReport} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><Download size={14} /> Baixar relatório</button><span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"><AlertTriangle size={14} /> {job.status === 'completed' ? 'Concluída' : job.status === 'failed' ? 'Falha' : job.status === 'paused' ? 'Pausada' : job.status === 'running' || job.status === 'queued' ? 'Em andamento' : 'Revisão necessária'}</span></div>
+            <div className="flex items-center gap-2"><button type="button" onClick={downloadReport} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><Download size={14} /> Baixar relatório</button><span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"><AlertTriangle size={14} /> {job.status === 'completed' ? 'Concluída' : job.status === 'failed' ? 'Falha' : job.status === 'paused' ? 'Pausada' : job.status === 'running' || job.status === 'queued' ? 'Em andamento' : job.status === 'validated_only' ? 'Validação sem gravação' : 'Revisão necessária'}</span></div>
           </div>
 
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -307,13 +307,15 @@ export default function CmBatchZipImporter() {
             <ul className="mt-2 space-y-2 text-xs text-rose-800 dark:text-rose-200">{(job.items ?? []).filter((item) => item.status === 'failed').map((item) => <li key={item.id}><strong>{item.entityType} · {item.externalKey}</strong><span className="block">{item.diagnostics.message || item.diagnostics.code || 'Falha sem detalhe disponível.'}</span></li>)}</ul>
           </details>}
           <div className="flex flex-wrap items-center gap-2">
+            {job.status === 'validated_only' && <button type="button" onClick={() => void validate(true)} disabled={!file || busy} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"><Archive size={16} />Salvar prévia e habilitar importação</button>}
             {job.status === 'needs_review' && <button type="button" onClick={() => void approveAndStart()} disabled={!canStart} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"><Play size={16} />Aprovar e iniciar importação</button>}
             {['queued', 'running'].includes(job.status) && <button type="button" onClick={() => void transition('pause')} disabled={busy && !processing} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm dark:border-slate-700"><Pause size={15} />Pausar</button>}
             {job.status === 'paused' && <button type="button" onClick={() => void transition('resume')} disabled={busy} className="inline-flex min-h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm text-white"><Play size={15} />Retomar</button>}
             {job.status === 'failed' && <button type="button" onClick={() => void transition('retry')} disabled={busy} className="inline-flex min-h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm text-white"><Play size={15} />Tentar novamente</button>}
             {['needs_review', 'queued', 'running', 'paused', 'failed'].includes(job.status) && <button type="button" onClick={() => void transition('cancel')} disabled={busy && !processing} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-rose-300 px-3 text-sm text-rose-700 dark:border-rose-900 dark:text-rose-300"><Square size={14} />Cancelar</button>}
             {processing && <span role="status" className="text-xs text-slate-500 dark:text-slate-400">Processando em blocos...</span>}
-            {!canStart && job.status === 'needs_review' && <p className="text-xs text-slate-500 dark:text-slate-400">Para iniciar, resolva as taxonomias que ainda não puderam ser associadas com segurança.</p>}
+            {job.status === 'validated_only' && <p className="basis-full text-xs text-slate-500 dark:text-slate-400">A validação não gravou nada. Salve a prévia privada para revisar as correspondências e habilitar o início.</p>}
+            {!canStart && job.status === 'needs_review' && <p className="text-xs text-slate-500 dark:text-slate-400">Para iniciar, resolva as taxonomias que ainda não puderam ser associadas com segurança. Conflitos de provas e questões serão pulados.</p>}
           </div>
           <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400"><CheckCircle2 size={14} /> {job.jobId ? 'ZIP mantido em armazenamento privado; cada item é confirmado por checkpoint e pode ser retomado.' : 'Validação sem gravação. Salve a prévia para registrar decisões.'}</p>
         </div>
