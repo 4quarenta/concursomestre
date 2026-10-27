@@ -90,6 +90,12 @@ type QuestionEditorialAliases = Question & {
   gabarito_comentado?: string | null;
 };
 
+type LoadedEditorialContent = {
+  questionId: string;
+  teacherComment: string;
+  detailedComment: string;
+};
+
 const resolveTeacherCommentContent = (question: Question): string => {
   const record = question as QuestionEditorialAliases;
   return [
@@ -533,9 +539,18 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       || (isLoadingAnnotatedLaws && hasQuestionTaxonomy)
     );
   const canShowStudyMaterialsButton = hasRelatedMaterials;
-  const teacherCommentContent = resolveTeacherCommentContent(question);
+  const [loadedEditorialContent, setLoadedEditorialContent] = useState<LoadedEditorialContent | null>(null);
+  const [loadingEditorialKind, setLoadingEditorialKind] = useState<'teacher' | 'detailed' | null>(null);
+  const [editorialLoadFailed, setEditorialLoadFailed] = useState<'teacher' | 'detailed' | null>(null);
+  const editorialQuestionId = String(question.id ?? '');
+  const matchingLoadedEditorial = loadedEditorialContent?.questionId === editorialQuestionId
+    ? loadedEditorialContent
+    : null;
+  const teacherCommentContent = resolveTeacherCommentContent(question)
+    || matchingLoadedEditorial?.teacherComment
+    || '';
   const hasTeacherCommentContent = teacherCommentContent !== '';
-  const detailedCommentContent = String(question.detailedComment || '').trim();
+  const detailedCommentContent = String(question.detailedComment || matchingLoadedEditorial?.detailedComment || '').trim();
   const hasTeacherCommentAvailable = Boolean(question.hasTeacherComment) || hasTeacherCommentContent;
   const hasDetailedCommentAvailable = Boolean(question.hasDetailedComment) || detailedCommentContent !== '';
 
@@ -855,6 +870,26 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const canSeeTeacher = hasPlanBenefit(currentUser, 'teacher_comments', systemSettings.planEntitlements);
   const canOpenTeacherComment = canSeeTeacher && hasTeacherCommentContent;
   const isTeacherCommentUnavailable = canSeeTeacher && !hasTeacherCommentContent;
+  const loadEditorialContent = React.useCallback(async (kind: 'teacher' | 'detailed') => {
+    if (!editorialQuestionId || loadingEditorialKind !== null) return;
+    if (kind === 'teacher' ? hasTeacherCommentContent : detailedCommentContent !== '') return;
+
+    setEditorialLoadFailed(null);
+    setLoadingEditorialKind(kind);
+    try {
+      const detail = await questionService.getQuestionById(editorialQuestionId);
+      setLoadedEditorialContent({
+        questionId: editorialQuestionId,
+        teacherComment: resolveTeacherCommentContent(detail),
+        detailedComment: String(detail.detailedComment || '').trim(),
+      });
+    } catch (error) {
+      clientLog.warn(`[QuestionCard] Failed to load ${kind} editorial:`, error);
+      setEditorialLoadFailed(kind);
+    } finally {
+      setLoadingEditorialKind(null);
+    }
+  }, [detailedCommentContent, editorialQuestionId, hasTeacherCommentContent, loadingEditorialKind]);
   // Análise Detalhada: apenas Elite
   const [showStats, setShowStats] = useState(false);
   const [localStats, setLocalStats] = useState<QuestionStats | null>(question.stats || null);
@@ -903,6 +938,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       setIsReporting(false);
       setShowTeacherComment(false);
       setShowDetailedComment(false);
+      setLoadedEditorialContent(null);
+      setLoadingEditorialKind(null);
+      setEditorialLoadFailed(null);
       setShowFilters(false);
       setShowStats(false);
       setShowMaterials(false);
@@ -1709,13 +1747,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   setShowDetailedComment(false);
                   setShowAnnotatedLaws(false);
                   if (shouldOpen) {
+                    if (!hasTeacherCommentContent) void loadEditorialContent('teacher');
                     void loadEditorialFeedback();
                   }
                 }}
                 title={isTeacherCommentUnavailable ? 'Comentario do professor ainda nao disponivel para esta questao.' : undefined}
                 className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showTeacherComment && canOpenTeacherComment ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-sm' : canOpenTeacherComment ? 'text-amber-700 dark:text-amber-300 bg-white dark:bg-slate-700 border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-slate-600' : 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-amber-200 dark:hover:border-amber-900/50'}`}
               >
-                {canOpenTeacherComment ? <GraduationCap size={14} /> : <Lock size={12} />}
+                {!canSeeTeacher ? <Lock size={12} /> : loadingEditorialKind === 'teacher' ? <Loader2 size={14} className="animate-spin" /> : <GraduationCap size={14} />}
                 Gabarito Comentado
               </button>
             ) : null}
@@ -1732,13 +1771,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   setShowTeacherComment(false);
                   setShowAnnotatedLaws(false);
                   if (shouldOpen) {
+                    if (!detailedCommentContent) void loadEditorialContent('detailed');
                     void loadEditorialFeedback();
                   }
                 }}
                 title={canSeeDetailed && !detailedCommentContent ? 'Analise detalhada ainda nao disponivel para esta questao.' : undefined}
                 className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showDetailedComment && canSeeDetailed ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : canSeeDetailed && detailedCommentContent ? 'text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-700 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-slate-600' : 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
               >
-                {canSeeDetailed && detailedCommentContent ? <BookOpen size={14} /> : <Lock size={12} />}
+                {!canSeeDetailed ? <Lock size={12} /> : loadingEditorialKind === 'detailed' ? <Loader2 size={14} className="animate-spin" /> : <BookOpen size={14} />}
                 Análise Detalhada
               </button>
             ) : null}
@@ -1888,7 +1928,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 ) : (
                   <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-dashed border-amber-200 dark:border-amber-900/30 text-center">
                     <GraduationCap size={24} className="text-amber-300 dark:text-amber-700 mx-auto mb-2" />
-                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Comentário do professor ainda não disponível para esta questão.</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
+                      {loadingEditorialKind === 'teacher' ? 'Carregando comentário do professor...' : editorialLoadFailed === 'teacher' ? 'Não foi possível carregar o comentário. Tente novamente.' : 'Comentário do professor ainda não disponível para esta questão.'}
+                    </p>
+                    {editorialLoadFailed === 'teacher' && canSeeTeacher ? <button type="button" onClick={() => void loadEditorialContent('teacher')} className="mt-2 text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400">Tentar novamente</button> : null}
                   </div>
                 )}
               </div>
@@ -1911,7 +1954,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 ) : (
                   <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900/30 text-center">
                     <BookOpen size={24} className="text-indigo-300 dark:text-indigo-700 mx-auto mb-2" />
-                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Análise detalhada ainda não disponível para esta questão.</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
+                      {loadingEditorialKind === 'detailed' ? 'Carregando análise detalhada...' : editorialLoadFailed === 'detailed' ? 'Não foi possível carregar a análise. Tente novamente.' : 'Análise detalhada ainda não disponível para esta questão.'}
+                    </p>
+                    {editorialLoadFailed === 'detailed' && canSeeDetailed ? <button type="button" onClick={() => void loadEditorialContent('detailed')} className="mt-2 text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400">Tentar novamente</button> : null}
                   </div>
                 )}
               </div>
