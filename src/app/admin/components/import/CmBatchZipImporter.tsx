@@ -1,11 +1,12 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Archive, CheckCircle2, Download, FileCheck2, Loader2, Pause, Play, ShieldCheck, Square } from 'lucide-react';
 import { fetchAuthenticatedResource } from '@services/api/client';
 import { getCsrfToken } from '@services/auth/session';
 import CmBatchQueueDiagnostics from './CmBatchQueueDiagnostics';
 import type { CmBatchQueueItem } from './cmBatchDiagnostics';
+import { queueActivityLabel, queueProgress } from './cmBatchProgress';
 
 type CmBatchJob = {
   jobId: string | null;
@@ -45,6 +46,14 @@ export default function CmBatchZipImporter() {
   const [busy, setBusy] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
+  const [lastResponse, setLastResponse] = useState<number | null>(null);
+  const [now, setNow] = useState(0);
+  const runner = useRef(false);
+  const stopRequested = useRef(false);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => { window.clearInterval(timer); stopRequested.current = true; };
+  }, []);
   const [selectedKey, setSelectedKey] = useState('');
   const [search, setSearch] = useState('');
   const [candidates, setCandidates] = useState<Array<{ id: number; name: string }>>([]);
@@ -98,7 +107,7 @@ export default function CmBatchZipImporter() {
   };
 
   const validate = async (persist = false) => {
-    if (!file || busy) return;
+    if (!file || busy || runner.current) return;
     setBusy(true);
     setError('');
     try {
@@ -128,25 +137,59 @@ export default function CmBatchZipImporter() {
     if (!csrfToken) throw new Error('Atualize a sessão antes de continuar.');
     const form = new FormData();
     Object.entries(values).forEach(([key, value]) => form.set(key, value));
-    const response = await fetchAuthenticatedResource('admin/cm_batch.php', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, body: form });
-    const payload = await response.json();
-    if (!response.ok || payload.success === false) throw new Error(payload.message || 'Não foi possível atualizar a importação.');
-    return payload.data ?? payload;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 120000);
+    try {
+      const response = await fetchAuthenticatedResource('admin/cm_batch.php', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, body: form, signal: controller.signal });
+      const payload = await response.json();
+      if (!response.ok || payload.success === false) throw new Error(payload.message || 'Não foi possível atualizar a importação.');
+      setLastResponse(Date.now());
+      return payload.data ?? payload;
+    } catch (cause) {
+      if (controller.signal.aborted) throw new Error('O servidor não respondeu em 2 minutos. O bloco pode ainda estar finalizando. Atualize o status antes de continuar; checkpoints confirmados serão preservados.');
+      throw cause;
+    } finally {
+      window.clearTimeout(timeout);
+    }
   };
 
   const processUntilStopped = async (currentJob: CmBatchJob) => {
+    if (runner.current) return;
+    runner.current = true;
+    stopRequested.current = false;
     let latest = currentJob;
     setProcessing(true);
+    setError('');
+    setLastResponse(Date.now());
     try {
-      while (['queued', 'running'].includes(latest.status)) {
+      while (!stopRequested.current && ['queued', 'running'].includes(latest.status)) {
         await new Promise((resolve) => window.setTimeout(resolve, 800));
+        if (stopRequested.current) break;
         const result = await postAction({ action: 'process', jobId: latest.jobId ?? '', limit: '5' });
         latest = result.job as CmBatchJob;
-        setJob(latest);
+        if (!stopRequested.current) setJob(latest);
       }
+    } catch (cause) {
+      setError(`${cause instanceof Error ? cause.message : 'Falha de comunicação.'} O envio de novos blocos foi interrompido nesta aba.`);
     } finally {
+      runner.current = false;
       setProcessing(false);
     }
+  };
+
+  const refreshStatus = async () => {
+    if (!job?.jobId || busy || runner.current) return;
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetchAuthenticatedResource(`admin/cm_batch.php?job_id=${encodeURIComponent(job.jobId)}`);
+      const payload = await response.json();
+      if (!response.ok || payload.success === false) throw new Error(payload.message || 'Falha ao consultar a fila.');
+      setJob(payload.data ?? payload);
+      setLastResponse(Date.now());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Falha ao consultar a fila.');
+    } finally { setBusy(false); }
   };
 
   const approveAndStart = async () => {
@@ -184,6 +227,7 @@ export default function CmBatchZipImporter() {
     if (!job?.jobId || (busy && !processing)) return;
     setBusy(true);
     setError('');
+    if (operation === 'pause' || operation === 'cancel') stopRequested.current = true;
     try {
       const next = await postAction({ action: 'transition', jobId: job.jobId, operation });
       const latest = next as CmBatchJob;
@@ -221,6 +265,7 @@ export default function CmBatchZipImporter() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <input
           type="file"
+          disabled={busy || processing}
           accept=".zip,application/zip"
           onChange={(event) => { setFile(event.target.files?.[0] ?? null); setJob(null); setError(''); }}
           className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-medium dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:file:bg-slate-800"
@@ -241,7 +286,7 @@ export default function CmBatchZipImporter() {
               <h3 className="font-semibold text-slate-900 dark:text-slate-100">{job.datasetLabel}</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">Lote {job.batchId} · SHA-256 {job.archiveSha256.slice(0, 16)}… · {job.manifest.yearsCovered?.join(', ')}</p>
             </div>
-            <div className="flex items-center gap-2"><button type="button" onClick={downloadReport} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><Download size={14} /> Baixar relatório</button><span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"><AlertTriangle size={14} /> {job.status === 'completed' ? 'Concluída' : job.status === 'failed' ? 'Falha' : job.status === 'paused' ? 'Pausada' : job.status === 'running' || job.status === 'queued' ? 'Em andamento' : job.status === 'validated_only' ? 'Validação sem gravação' : 'Revisão necessária'}</span></div>
+            <div className="flex items-center gap-2"><button type="button" onClick={downloadReport} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><Download size={14} /> Baixar relatório</button><span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"><AlertTriangle size={14} /> {queueActivityLabel(job.status, processing)}</span></div>
           </div>
 
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -314,8 +359,15 @@ export default function CmBatchZipImporter() {
           </div>
           {job.progress && <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm"><strong>Progresso da fila</strong><span>{job.progress.completedExams ?? 0}/{job.progress.totalExams ?? job.plan.exams.length} provas · {job.progress.completedQuestions ?? 0}/{job.progress.totalQuestions ?? job.plan.questions.total} questões</span></div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full bg-indigo-600 transition-all" style={{ width: `${Math.min(100, (((job.progress.completedExams ?? 0) + (job.progress.completedQuestions ?? 0)) / Math.max(1, (job.progress.totalExams ?? job.plan.exams.length) + (job.progress.totalQuestions ?? job.plan.questions.total))) * 100)}%` }} /></div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full bg-indigo-600 transition-all" style={{ width: `${queueProgress(job.progress, (job.progress.totalExams ?? job.plan.exams.length) + (job.progress.totalQuestions ?? job.plan.questions.total)).percent}%` }} /></div>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{job.progress.pending ?? 0} pendentes · {job.progress.blocked ?? 0} bloqueados · {job.progress.failed ?? 0} falhas</p>
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">A barra inclui itens concluídos, bloqueados e com falha; bloqueados não foram importados.</p>
+            {['queued', 'running'].includes(job.status) && <p role="status" className="mt-3 text-sm font-medium">{processing ? 'Enviando blocos ao servidor. Mantenha esta aba aberta.' : 'Nenhum bloco está sendo enviado por esta aba. Continue o processamento abaixo.'}</p>}
+            {lastResponse !== null && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Última resposta do servidor há {Math.max(0, Math.floor((now - lastResponse) / 1000))} s.{processing && now - lastResponse > 30000 ? ' Aguardando confirmação do bloco atual; ainda não há novo progresso confirmado.' : ''}</p>}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {['queued', 'running'].includes(job.status) && !processing && <button type="button" disabled={busy} onClick={() => void processUntilStopped(job)} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white disabled:opacity-50"><Play size={16} />Continuar processamento</button>}
+              <button type="button" disabled={busy || processing} onClick={() => void refreshStatus()} className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50 dark:border-slate-700">Atualizar status</button>
+            </div>
           </div>}
           {!!job.items?.length && <CmBatchQueueDiagnostics key={job.jobId} items={job.items} exams={job.plan.exams} questions={job.plan.questions.items ?? []} />}
           <div className="flex flex-wrap items-center gap-2">
