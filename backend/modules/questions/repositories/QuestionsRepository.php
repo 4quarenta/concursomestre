@@ -15,6 +15,7 @@ require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 require_once __DIR__ . '/../../seo/sitemaps/StaticSitemapMutationInvalidator.php';
 require_once __DIR__ . '/ImportedExamIdentityPolicy.php';
 require_once __DIR__ . '/ImportedExamSlugPolicy.php';
+require_once __DIR__ . '/CmBatchLegacyExamYearRepair.php';
 
 /**
  * Repository oficial do dominio de questes.
@@ -3049,7 +3050,9 @@ class QuestionsRepository
             if(count($rows)>1)throw new DomainException('Identidade externa da prova ambigua.');
             $existing=$rows[0]??null;
         }
-        if($existing && (int)$existing['ano']!==(int)$record['ano'])throw new DomainException('Ano oficial diverge da prova existente.');
+        if($existing && (int)$existing['ano']!==(int)$record['ano']) {
+            $existing = CmBatchLegacyExamYearRepair::apply($this->db, $existing, $record, $provider, $externalId, $jobId);
+        }
         if($existing) {
             $id=(int)$existing['id'];
             $this->mergeMissingCmBatchExamFields($id, $existing, $record, $jobId);

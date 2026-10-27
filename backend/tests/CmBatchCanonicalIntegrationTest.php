@@ -4,6 +4,7 @@ require_once __DIR__.'/../modules/questions/repositories/QuestionsRepository.php
 require_once __DIR__.'/../modules/questions/validators/QuestionsValidator.php';
 require_once __DIR__.'/../modules/questions/services/QuestionsRewardService.php';
 require_once __DIR__.'/../modules/questions/services/QuestionsService.php';
+require_once __DIR__.'/../modules/ingestion/services/CmBatchQueueService.php';
 
 $schemaFile=$argv[1]??'';
 if(!is_file($schemaFile))throw new InvalidArgumentException('Provide schema-only fixture');
@@ -28,14 +29,14 @@ try {
     $examA=$repository->saveCmBatchExam($examRecord,'gran','4622','',$job);
     $examB=$repository->saveCmBatchExam($examRecord,'gran','4623','',$job);
     $examRepeat=$repository->saveCmBatchExam($examRecord,'gran','4622','',$job);
-    $exam2017=$repository->saveCmBatchExam(array_merge($examRecord,['nome'=>'FUNECE','slug'=>'funece','ano'=>2017]),'gran','26558','',$job);
+    $exam2017=$repository->saveCmBatchExam(array_merge($examRecord,['nome'=>'FUNECE','slug'=>'funece','ano'=>2017]),'gran','26559','',$job);
     $db->commit();
     if($examA===$examB || $examA!==$examRepeat)throw new RuntimeException('Exam identity conflated titles or duplicated replay');
     if((int)$db->query('SELECT ano FROM provas WHERE id='.$exam2017)->fetchColumn()!==2017)throw new RuntimeException('Actual exam year lost');
     if((int)$db->query("SELECT COUNT(*) FROM provas WHERE id IN ($examA,$examB,$exam2017) AND status_editorial='draft' AND visibility_status='internal'")->fetchColumn()!==3)throw new RuntimeException('Exam auto published');
     $db->beginTransaction();
     try {
-        $repository->saveCmBatchExam(array_merge($examRecord,['ano'=>1998]),'gran','26558','',$job);
+        $repository->saveCmBatchExam(array_merge($examRecord,['ano'=>1998]),'gran','26559','',$job);
         throw new RuntimeException('Conflicting exam year accepted');
     } catch(DomainException $expected) {
         $db->rollBack();
@@ -81,7 +82,47 @@ try {
     if($db->query("SELECT body FROM question_editorials WHERE editorial_type='teacher_comment'")->fetchColumn()!=='Comentario ainda nao conferido')throw new RuntimeException('Existing comment overwritten');
     if($db->query("SELECT body FROM question_editorials WHERE editorial_type='detailed_analysis'")->fetchColumn()!=='Missing analysis added')throw new RuntimeException('Missing analysis not added');
     if((int)$db->query('SELECT COUNT(*) FROM question_editorials')->fetchColumn()!==2)throw new RuntimeException('Editorial replay duplicated rows');
-    echo "CmBatchCanonicalIntegrationTest: PASS (direct Gran source_external_id lookup, canonical options/editorial, N:N, private drafts, no active unverified answer)\n";
+    $legacyMetadata=json_encode(['source'=>'bulk_import_pdf','sourceProvider'=>'gran','sourceExternalId'=>'26558']);
+    $stmt=$db->prepare("INSERT INTO provas (nome,slug,ano,source_provider,source_external_id,status_editorial,visibility_status,metadata_json) VALUES ('FUNECE - Civil - 1998','legacy-funece',1998,'gran','26558','published','public',?)");
+    $stmt->execute([$legacyMetadata]);$legacyExam=(int)$db->lastInsertId();
+    $corrected=['nome'=>'FUNECE - Civil - 2017','ano'=>2017,'updated_by_user_id'=>'admin','metadata_json'=>json_encode(['sourceDocument'=>[
+        'source'=>['provider'=>'gran','externalExamId'=>'26558','catalogNameOriginal'=>'FUNECE - Civil - 1998'],
+        'identity'=>['originalYear'=>1998,'canonicalYear'=>2017], 'metadata'=>['dataProva'=>'2017-02-12'],
+        'evidence'=>[['field'=>'dataProva','value'=>'2017-02-12','source'=>'Official answer sheet page 7','status'=>'verified']],
+    ]])];
+    $unverified=$corrected;$unverified['metadata_json']='{}';
+    $db->beginTransaction();
+    try {$repository->saveCmBatchExam($unverified,'gran','26558','',$job);throw new RuntimeException('Unverified year overwritten');}
+    catch(DomainException){$db->rollBack();}
+    for($i=0;$i<2;$i++){
+        $db->beginTransaction();$repaired=$repository->saveCmBatchExam($corrected,'gran','26558','',$job);$db->commit();
+        if($repaired!==$legacyExam)throw new RuntimeException('Legacy exam duplicated');
+    }
+    $exam=$db->query('SELECT ano,status_editorial,visibility_status FROM provas WHERE id='.$legacyExam)->fetch(PDO::FETCH_ASSOC);
+    if((int)$exam['ano']!==2017||$exam['status_editorial']!=='published'||$exam['visibility_status']!=='public')throw new RuntimeException('Repair changed publication or failed to repair year');
+    if((int)$db->query("SELECT COUNT(*) FROM cm_batch_field_audit WHERE merge_reason='repair_legacy_catalog_year_from_verified_exam_date'")->fetchColumn()!==2)throw new RuntimeException('Repair audit missing or duplicated');
+    $archive=tempnam(sys_get_temp_dir(),'cm-dependency-');file_put_contents($archive,'fixture');
+    try {
+        $stmt=$db->prepare("INSERT INTO cm_batch_import_jobs (job_id,batch_id,archive_sha256,source_provider,dataset_label,archive_path,status,manifest_json,dry_run_json,actor_user_id,approved_by_user_id,approved_at) VALUES (?,'dependency',?,'gran','Dependency test',?,'completed','{}','{}','admin','admin',CURRENT_TIMESTAMP)");
+        $stmt->execute([$job,hash_file('sha256',$archive),$archive]);
+        $insert=$db->prepare("INSERT INTO cm_batch_import_items (job_id,entity_type,external_key,action,status,diagnostics_json) VALUES (?,?,?,?,?,?)");
+        $insert->execute([$job,'exam','gran:26558','link','blocked',json_encode(['message'=>'Ano oficial diverge da prova existente.'])]);
+        $insert->execute([$job,'question','gran:26558:q14','enrich','blocked',json_encode(['message'=>'Prova ainda nao foi materializada; o checkpoint da prova precisa concluir primeiro.'])]);
+        $insert->execute([$job,'question','gran:26558:conflict','blocked','blocked',json_encode(['message'=>'gran_external_id_content_conflict'])]);
+        $insert->execute([$job,'question','gran:26558:done','link','done','{}']);
+        $queue=new CmBatchQueueService($db,'admin');$queue->transition($job,'retry_dependencies');
+        if((int)$db->query("SELECT COUNT(*) FROM cm_batch_import_items WHERE status='planned'")->fetchColumn()!==2)throw new RuntimeException('Wrong dependency retry scope');
+        $queue->processOne($job,static function(array $job,array $item)use($legacyExam):array{
+            if($item['entity_type']!=='exam')throw new RuntimeException('Child scheduled before exam');
+            return ['canonicalId'=>$legacyExam];
+        });
+        $queue->processOne($job,static function(array $job,array $item)use($first):array{
+            if($item['external_key']!=='gran:26558:q14')throw new RuntimeException('Conflict or completed item retried');
+            return ['canonicalId'=>$first['canonicalId']];
+        });
+        if((int)$db->query("SELECT COUNT(*) FROM cm_batch_import_items WHERE status='blocked'")->fetchColumn()!==1)throw new RuntimeException('Content conflict unblocked');
+    } finally {unlink($archive);}
+    echo "CmBatchCanonicalIntegrationTest: PASS (Gran identity, N:N, additive editorial, legacy year repair audit/replay, dependency retry ordering, conflict preservation)\n";
 } finally {
     if($db->inTransaction())$db->rollBack();
     $db->exec("DROP DATABASE `$schema`");

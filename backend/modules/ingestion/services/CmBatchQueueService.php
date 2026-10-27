@@ -78,9 +78,18 @@ final class CmBatchQueueService
                 'resume' => $job['status']==='paused' ? 'queued' : null,
                 'cancel' => in_array($job['status'],['needs_review','queued','running','paused','failed'],true) ? 'cancelled' : null,
                 'retry' => $job['status']==='failed' ? 'queued' : null,
+                'retry_dependencies' => in_array($job['status'],['completed','failed','paused','running','queued'],true) ? 'queued' : null,
                 default => null,
             };
             if ($target===null) throw new DomainException('Transicao de fila invalida.');
+            if ($operation==='retry_dependencies') {
+                if (empty($job['approved_by_user_id']) || empty($job['approved_at'])) throw new DomainException('Lote sem aprovacao administrativa.');
+                $this->assertArchive($job);
+                $retry=$this->db->prepare("UPDATE cm_batch_import_items SET status='planned',next_attempt_at=NULL WHERE job_id=:id AND status='blocked' AND action NOT IN ('blocked','conflict','needs_review') AND ((entity_type='exam' AND JSON_UNQUOTE(JSON_EXTRACT(diagnostics_json,'$.message')) LIKE 'Ano oficial diverge da prova existente%') OR (entity_type='question' AND JSON_UNQUOTE(JSON_EXTRACT(diagnostics_json,'$.message'))='Prova ainda nao foi materializada; o checkpoint da prova precisa concluir primeiro.'))");
+                $retry->execute([':id'=>$jobId]);
+                if ($retry->rowCount()===0) throw new DomainException('Nao ha dependencias recuperaveis neste lote.');
+                $this->refreshProgress($jobId);
+            }
             if ($operation==='retry') {
                 $this->assertArchive($job);
                 $stmt=$this->db->prepare("UPDATE cm_batch_import_items SET status='planned',attempt_count=0,next_attempt_at=NULL WHERE job_id=:id AND status='failed'");

@@ -180,7 +180,7 @@ export default function CmBatchZipImporter() {
     }
   };
 
-  const transition = async (operation: 'pause' | 'resume' | 'cancel' | 'retry') => {
+  const transition = async (operation: 'pause' | 'resume' | 'cancel' | 'retry' | 'retry_dependencies') => {
     if (!job?.jobId || (busy && !processing)) return;
     setBusy(true);
     setError('');
@@ -189,7 +189,7 @@ export default function CmBatchZipImporter() {
       const latest = next as CmBatchJob;
       setJob(latest);
       setBusy(false);
-      if (operation === 'resume' || operation === 'retry') await processUntilStopped(latest);
+      if (operation === 'resume' || operation === 'retry' || operation === 'retry_dependencies') await processUntilStopped(latest);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Falha ao alterar a fila.');
     } finally {
@@ -319,6 +319,7 @@ export default function CmBatchZipImporter() {
           </div>}
           {!!job.items?.length && <CmBatchQueueDiagnostics key={job.jobId} items={job.items} exams={job.plan.exams} questions={job.plan.questions.items ?? []} />}
           <div className="flex flex-wrap items-center gap-2">
+            {['completed','failed','paused','running','queued'].includes(job.status) && job.items?.some((item) => item.status === 'blocked' && (item.diagnostics.message?.startsWith('Ano oficial diverge da prova existente') || item.diagnostics.message === 'Prova ainda nao foi materializada; o checkpoint da prova precisa concluir primeiro.')) && <button type="button" disabled={busy || processing} onClick={() => void transition('retry_dependencies')} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white disabled:opacity-50"><Play size={16} />Retomar prova e questões dependentes</button>}
             {job.status === 'validated_only' && <button type="button" onClick={() => void validate(true)} disabled={!file || busy} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"><Archive size={16} />Salvar prévia e habilitar importação</button>}
             {job.status === 'needs_review' && <button type="button" onClick={() => void approveAndStart()} disabled={!canStart} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"><Play size={16} />Aprovar e iniciar importação</button>}
             {['queued', 'running'].includes(job.status) && <button type="button" onClick={() => void transition('pause')} disabled={busy && !processing} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm dark:border-slate-700"><Pause size={15} />Pausar</button>}
