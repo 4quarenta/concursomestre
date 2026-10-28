@@ -264,6 +264,9 @@ final class CmZipImportService
         if(!$selected)throw new InvalidArgumentException('Prova fora do inventario validado.');
         $zip=$this->archive($state);
         try {
+            if($this->db->inTransaction())throw new RuntimeException('A conexao possui uma transacao anterior; nao e seguro gerar a pre-visualizacao.');
+            $this->db->exec('SET TRANSACTION READ ONLY');
+            $this->db->beginTransaction();
             $prefix=(string)$selected['path'];$meta=$this->readJson($zip,$prefix.'/metadados.json');
             $payload=$this->readJson($zip,$prefix.'/questoes.json');
             $externalId=substr($externalKey,5);$ids=[];
@@ -289,9 +292,13 @@ final class CmZipImportService
                 'questionIdsHash'=>hash('sha256',implode("\n",array_keys($ids))),
                 'message'=>$blocked?(count($proofRows)>1?'Mais de um registro de prova usa esta identidade externa.':(count($duplicateQuestionIds)>0?'Há IDs externos de questão duplicados no banco.':($row?'Ano da prova existente diverge do manifesto.':'Prova ausente e todas as questões já existem; não é seguro criar a prova por este fluxo.'))):
                     ($missing?'Há questões ausentes. Processar exige confirmação explícita de publicação.':'Todas as questões do ZIP já existem; nenhuma questão será enviada ao importador canônico.')];
+            $this->db->rollBack();
             $state['previews'][$externalKey]=$result;
             $this->writeState($state);
             return $result;
+        } catch(Throwable $e) {
+            if($this->db->inTransaction())$this->db->rollBack();
+            throw $e;
         } finally {$zip->close();}
     }
 

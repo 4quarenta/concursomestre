@@ -1,7 +1,10 @@
 'use client';
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import { apiClient } from '@services/api/client';
+import { useAuth } from '@providers/AuthProvider';
+import { canAccessAdminPanel } from '@services/auth';
 
 type Exam = { externalKey: string; title: string; year: number; questions: number; path: string };
 type Run = { runId: string; inventory: { batchId: string; filesVerified: number; exams: Exam[] } };
@@ -15,6 +18,9 @@ function message(error: unknown): string {
 }
 
 export default function ImportadorZipPage() {
+  const router=useRouter();
+  const {currentUser,isLoading:isAuthLoading}=useAuth();
+  const isAdmin=canAccessAdminPanel(currentUser)&&currentUser?.role==='admin';
   const [archive, setArchive] = React.useState<File | null>(null);
   const [run, setRun] = React.useState<Run | null>(null);
   const [results, setResults] = React.useState<Record<string, Result>>({});
@@ -26,8 +32,10 @@ export default function ImportadorZipPage() {
   const [resumeId, setResumeId] = React.useState('');
   const stop = React.useRef(false);
 
+  React.useEffect(()=>{if(!isAuthLoading&&!isAdmin)router.replace('/');},[isAdmin,isAuthLoading,router]);
+
   const upload = async () => {
-    if (!archive || busy) return;
+    if (!isAdmin || !archive || busy) return;
     setBusy(true); setErrors([]); setResults({}); setPreviews({}); setRun(null); setPosition(0);
     try {
       const payload = new FormData();
@@ -43,7 +51,7 @@ export default function ImportadorZipPage() {
   };
 
   const resume = async () => {
-    if (busy || !/^[a-f0-9]{32}$/.test(resumeId)) return;
+    if (!isAdmin || busy || !/^[a-f0-9]{32}$/.test(resumeId)) return;
     setBusy(true); setErrors([]);
     try {
       const response = await apiClient.get<{success:boolean;data:{runId:string;inventory:Run['inventory'];results:Record<string,Result>;previews:Record<string,Preview>}}>(ENDPOINT,{params:{runId:resumeId}});
@@ -56,7 +64,7 @@ export default function ImportadorZipPage() {
   };
 
   const generatePreview = async () => {
-    if (!run || busy) return;
+    if (!isAdmin || !run || busy) return;
     setBusy(true); setErrors([]); setPreviews({});
     for (let i=0;i<run.inventory.exams.length;i++) {
       const exam=run.inventory.exams[i];
@@ -73,7 +81,7 @@ export default function ImportadorZipPage() {
   };
 
   const process = async () => {
-    if (!run || busy || !allPreviewed || previewsBlocked) return;
+    if (!isAdmin || !run || busy || !allPreviewed || previewsBlocked) return;
     setBusy(true); setErrors([]); stop.current=false;
     let idx=0;
     for (const exam of run.inventory.exams) {
@@ -99,6 +107,8 @@ export default function ImportadorZipPage() {
   const completed=Object.values(results).filter(r=>r.status==='done').length;
   const allPreviewed=!!run && run.inventory.exams.every(e=>previews[e.externalKey]?.status==='ready');
   const previewsBlocked=!!run && run.inventory.exams.some(e=>previews[e.externalKey]?.status==='blocked');
+  if(isAuthLoading)return <main className="mx-auto max-w-5xl px-5 py-12 text-sm text-slate-500">Verificando acesso administrativo...</main>;
+  if(!isAdmin)return null;
   return <main className="mx-auto max-w-5xl space-y-6 px-5 py-8">
     <header>
       <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Ferramenta administrativa temporaria</p>
@@ -109,7 +119,7 @@ export default function ImportadorZipPage() {
       <h2 className="font-semibold">1. Selecionar e verificar ZIP</h2>
       <input aria-label="Arquivo ZIP" accept=".zip,application/zip" type="file" className="mt-4 block w-full text-sm" onChange={e=>setArchive(e.currentTarget.files?.[0]||null)}/>
       <button type="button" onClick={upload} disabled={!archive || busy} className="mt-4 rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50">{busy&&!run?'Verificando...':'Validar ZIP'}</button>
-      <p className="mt-2 text-xs text-slate-500">Limite do serviço: 150 MiB compactados; exige PHP e proxy configurados para upload equivalente.</p>
+      <p className="mt-2 text-xs text-slate-500">Limite do serviço: 150 MiB compactados. Nesta VPS, o Nginx aceita até 120 MiB por requisição; arquivos acima disso precisam de ajuste no proxy.</p>
       <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
         <input aria-label="ID da execução anterior" placeholder="ID da execução para retomar" value={resumeId} onChange={e=>setResumeId(e.target.value.trim())} className="min-w-[280px] flex-1 rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700" />
         <button type="button" onClick={resume} disabled={busy || !/^[a-f0-9]{32}$/.test(resumeId)} className="rounded-lg border border-slate-400 px-4 py-2 text-sm disabled:opacity-50">Retomar execução</button>
