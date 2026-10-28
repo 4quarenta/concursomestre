@@ -214,7 +214,17 @@ class ExamsService
             'roles' => $this->publicProfessionalTaxonomyList($taxonomies['cargo'] ?? [], 'position'),
             'careers' => $this->publicProfessionalTaxonomyList($taxonomies['carreira'] ?? [], 'career'),
             'areas' => $this->publicTaxonomyList(array_merge($taxonomies['area'] ?? [], $taxonomies['foco'] ?? [])),
-            'subjects' => $this->publicTaxonomyList($taxonomies['materia'] ?? []),
+            'subjects' => $this->publicExamSubjects($exam, $taxonomies),
+            'programmaticContent' => $exam['conteudoProgramatico'] ?? [],
+            'programmaticContentDetailed' => $exam['conteudoProgramaticoDetalhado'] ?? [],
+            'programmaticContentStatus' => $exam['programmaticContentStatus'] ?? null,
+            'programmaticContentFonte' => $exam['programmaticContentFonte'] ?? null,
+            'programmaticContentIntegralVerificado' => $exam['programmaticContentIntegralVerificado'] ?? false,
+            'stages' => $exam['etapas'] ?? [],
+            'requirementsDetailed' => $exam['requisitosDetalhados'] ?? [],
+            'remunerationsDetailed' => $exam['remuneracoesDetalhadas'] ?? [],
+            'vacanciesDetailed' => $exam['vagasDetalhadas'] ?? [],
+            'registrationFee' => $exam['valorInscricao'] ?? null,
             'examTypes' => $this->publicTaxonomyList($taxonomies['tipo_prova'] ?? []),
             'files' => $files,
             'relatedExams' => $relatedExams,
@@ -223,6 +233,27 @@ class ExamsService
         ];
 
         return $this->publicSeoEnvelope->attachExam($payload);
+    }
+
+    /** Public subjects may be linked to booklets instead of prova_filters. */
+    private function publicExamSubjects(array $exam, array $taxonomies): array
+    {
+        $base = $this->publicTaxonomyList($taxonomies['materia'] ?? []);
+        $seen = [];
+        foreach ($base as $item) {
+            $seen[(string)($item['id'] ?? '')] = true;
+        }
+        foreach ($exam['cadernos'] ?? [] as $booklet) {
+            foreach ($booklet['conteudoProgramatico'] ?? [] as $filter) {
+                if (!is_array($filter)) continue;
+                if (($filter['taxonomyLevel'] ?? '') !== 'materia' && ($filter['type'] ?? '') !== 'materia') continue;
+                $id = (int)($filter['id'] ?? 0);
+                if ($id <= 0 || isset($seen[(string)$id])) continue;
+                $base[] = ['id'=>$id, 'name'=>(string)($filter['nome'] ?? $filter['name'] ?? ''), 'slug'=>(string)($filter['slug'] ?? '')];
+                $seen[(string)$id] = true;
+            }
+        }
+        return $base;
     }
 
     private function publicDirectoryItemFromRow(array $row): array

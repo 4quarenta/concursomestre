@@ -91,6 +91,16 @@ export interface PublicExamDetail extends Omit<PublicExamDirectoryItem, 'board' 
   careers: PublicExamTaxonomy[];
   areas: PublicExamTaxonomy[];
   subjects: PublicExamTaxonomy[];
+  programmaticContent?: string[];
+  programmaticContentDetailed?: Array<{disciplina?: string; materia?: string; secao?: string; topico?: string; assunto?: string; temas?: Array<string | {rotulo_normalizado?: string; nome?: string; assunto?: string}>}>;
+  programmaticContentStatus?: string | null;
+  programmaticContentFonte?: string | null;
+  programmaticContentIntegralVerificado?: boolean;
+  registrationFee?: string | number | null;
+  stages?: Array<Record<string, unknown>>;
+  requirementsDetailed?: Array<Record<string, unknown>>;
+  remunerationsDetailed?: Array<Record<string, unknown>>;
+  vacanciesDetailed?: Array<Record<string, unknown>>;
   examTypes: PublicExamTaxonomy[];
   files: PublicExamFile[];
   relatedExams: PublicExamDirectoryItem[];

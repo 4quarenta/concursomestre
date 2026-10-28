@@ -443,7 +443,7 @@ class ExamsRepository
             'scheduled_at' => $publishStatus === 'scheduled'
                 ? $this->nullableDate($payload['scheduledAt'] ?? $payload['scheduled_at'] ?? null)
                 : null,
-            'metadata_json' => json_encode($this->buildMetadata($payload), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'metadata_json' => json_encode($this->buildMetadata($payload, $currentMetadata), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ];
 
         if ($id !== null && $this->findRawById($id)) {
@@ -883,6 +883,16 @@ class ExamsRepository
             'remunerations' => $remuneracoes,
             'conteudoProgramatico' => $conteudo,
             'programmaticContent' => $conteudo,
+            'conteudoProgramaticoDetalhado' => $metadata['conteudoProgramaticoDetalhado'] ?? $metadata['programmaticContentDetailed'] ?? [],
+            'programmaticContentDetailed' => $this->flattenProgramForAdmin($metadata),
+            'programmaticContentStatus' => $metadata['programmaticContentStatus'] ?? null,
+            'programmaticContentFonte' => $metadata['programmaticContentFonte'] ?? null,
+            'programmaticContentIntegralVerificado' => $metadata['programmaticContentIntegralVerificado'] ?? false,
+            'requisitosDetalhados' => $metadata['requisitosDetalhados'] ?? [],
+            'remuneracoesDetalhadas' => $metadata['remuneracoesDetalhadas'] ?? [],
+            'vagasDetalhadas' => $metadata['vagasDetalhadas'] ?? [],
+            'etapas' => $metadata['etapas'] ?? [],
+            'valorInscricao' => $metadata['valorInscricao'] ?? null,
             'taxonomies' => $grouped,
             'cadernos' => $formattedCadernos,
             'questionCount' => (int) ($row['question_count'] ?? 0),
@@ -1489,7 +1499,27 @@ class ExamsRepository
         return is_array($decoded) ? $decoded : [];
     }
 
-    private function buildMetadata(array $payload): array
+    /** Editor accepts flat rows; canonical source program stays nested. */
+    private function flattenProgramForAdmin(array $metadata): array
+    {
+        $flat = $metadata['programmaticContentDetailed'] ?? [];
+        if (is_array($flat) && $flat !== []) return $flat;
+        $items = [];
+        foreach ($metadata['conteudoProgramaticoDetalhado'] ?? [] as $discipline) {
+            if (!is_array($discipline)) continue;
+            $name = trim((string)($discipline['disciplina'] ?? $discipline['materia'] ?? ''));
+            if ($name === '') continue;
+            $topics = is_array($discipline['temas'] ?? null) ? $discipline['temas'] : [];
+            if (!$topics) $items[] = ['materia'=>$name, 'topico'=>'', 'assunto'=>''];
+            foreach ($topics as $topic) {
+                $label = is_array($topic) ? (string)($topic['rotulo_normalizado'] ?? $topic['nome'] ?? '') : (string)$topic;
+                $items[] = ['materia'=>$name, 'topico'=>$label, 'assunto'=>''];
+            }
+        }
+        return $items;
+    }
+
+    private function buildMetadata(array $payload, array $currentMetadata = []): array
     {
         $allowed = [
             'index',
@@ -1505,16 +1535,34 @@ class ExamsRepository
             'remunerations',
             'conteudoProgramatico',
             'programmaticContent',
+            'conteudoProgramaticoDetalhado',
+            'programmaticContentDetailed',
+            'programmaticContentStatus',
+            'programmaticContentFonte',
+            'programmaticContentIntegralVerificado',
+            'requisitosDetalhados',
+            'remuneracoesDetalhadas',
+            'vagasDetalhadas',
+            'etapas',
+            'valorInscricao',
+            'zipProgramEvidence',
+            'zipSource',
             'editalInsights',
             'extractionStatus',
             'publishedAt',
         ];
         $metadata = [];
         foreach ($allowed as $key) {
-            if (array_key_exists($key, $payload)) {
-                $metadata[$key] = $payload[$key];
+            if (!array_key_exists($key, $payload)) {
+                continue;
             }
+            $candidate = $payload[$key];
+            if (($candidate === null || $candidate === '' || $candidate === [])
+                && !empty($currentMetadata[$key])) {
+                continue; // preserve nonempty metadata omitted by older admin forms
+            }
+            $metadata[$key] = $candidate;
         }
-        return $metadata;
+        return array_replace($currentMetadata, $metadata);
     }
 }
