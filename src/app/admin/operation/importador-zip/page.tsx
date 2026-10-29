@@ -8,6 +8,7 @@ import { canAccessAdminPanel } from '@services/auth';
 
 type Exam = { externalKey: string; title: string; year: number; questions: number; path: string };
 type Run = { runId: string; inventory: { batchId: string; filesVerified: number; exams: Exam[] } };
+type ApiEnvelope<T> = { success: boolean; data: T };
 type Result = { status: 'done' | 'error'; externalKey: string; message?: string; existingQuestions?: number; sentToCanonical?: number; exam?: {id: number; programDisciplines: number; programThemes: number}; links?: {linked: number; created: number}; warnings?: string[] };
 type Preview = {status:'ready'|'blocked';externalKey:string;year:number;expectedQuestions:number;existingQuestions:number;missingQuestions:number;examExists:boolean;existingExamYear:number|null;programDisciplines:number;programThemes:number;documentEntries:number;assetEntries:number;message:string};
 const ENDPOINT = 'admin/zip_import.php';
@@ -15,6 +16,17 @@ const ENDPOINT = 'admin/zip_import.php';
 function message(error: unknown): string {
   const maybe = error as { response?: {data?: {message?: string}}; message?: string };
   return maybe?.response?.data?.message || maybe?.message || 'Falha desconhecida.';
+}
+
+function apiEnvelope<T>(response: unknown): ApiEnvelope<T> {
+  const isEnvelope = (value: unknown): value is ApiEnvelope<T> =>
+    Boolean(value && typeof value === 'object' && 'success' in value && 'data' in value);
+  if (isEnvelope(response)) return response;
+  if (response && typeof response === 'object' && 'data' in response) {
+    const payload = (response as {data: unknown}).data;
+    if (isEnvelope(payload)) return payload;
+  }
+  throw new Error('Resposta inesperada do backend.');
 }
 
 export default function ImportadorZipPage() {
@@ -41,12 +53,12 @@ export default function ImportadorZipPage() {
       const payload = new FormData();
       payload.append('action','upload');
       payload.append('archive',archive);
-      const response = await apiClient.post<{success: boolean; data: Run}>(ENDPOINT, payload, {
+      const response = apiEnvelope<Run>(await apiClient.post<ApiEnvelope<Run>>(ENDPOINT, payload, {
         timeout: 240000,
         headers: {'Content-Type': undefined},
-      });
-      if (!response.data.success) throw new Error('O backend nao aceitou o ZIP.');
-      setRun(response.data.data);
+      }));
+      if (!response.success) throw new Error('O backend nao aceitou o ZIP.');
+      setRun(response.data);
     } catch (err) {setErrors([message(err)]);} finally {setBusy(false);}
   };
 
@@ -54,11 +66,11 @@ export default function ImportadorZipPage() {
     if (!isAdmin || busy || !/^[a-f0-9]{32}$/.test(resumeId)) return;
     setBusy(true); setErrors([]);
     try {
-      const response = await apiClient.get<{success:boolean;data:{runId:string;inventory:Run['inventory'];results:Record<string,Result>;previews:Record<string,Preview>}}>(ENDPOINT,{params:{runId:resumeId}});
-      if (!response.data.success) throw new Error('Execucao nao encontrada.');
-      setRun({runId:response.data.data.runId,inventory:response.data.data.inventory});
-      setResults(response.data.data.results || {});
-      setPreviews(response.data.data.previews || {});
+      const response = apiEnvelope<{runId:string;inventory:Run['inventory'];results:Record<string,Result>;previews:Record<string,Preview>}>(await apiClient.get<ApiEnvelope<{runId:string;inventory:Run['inventory'];results:Record<string,Result>;previews:Record<string,Preview>}>>(ENDPOINT,{params:{runId:resumeId}}));
+      if (!response.success) throw new Error('Execucao nao encontrada.');
+      setRun({runId:response.data.runId,inventory:response.data.inventory});
+      setResults(response.data.results || {});
+      setPreviews(response.data.previews || {});
       setPosition(0);
     } catch (error) {setErrors([message(error)]);} finally {setBusy(false);}
   };
@@ -69,9 +81,9 @@ export default function ImportadorZipPage() {
     for (let i=0;i<run.inventory.exams.length;i++) {
       const exam=run.inventory.exams[i];
       try {
-        const response=await apiClient.post<{success:boolean;data:Preview}>(ENDPOINT,{action:'preview',runId:run.runId,examKey:exam.externalKey},{timeout:240000});
-        if(!response.data.success) throw new Error('Falha ao gerar prévia.');
-        setPreviews(prev=>({...prev,[exam.externalKey]:response.data.data}));
+        const response=apiEnvelope<Preview>(await apiClient.post<ApiEnvelope<Preview>>(ENDPOINT,{action:'preview',runId:run.runId,examKey:exam.externalKey},{timeout:240000}));
+        if(!response.success) throw new Error('Falha ao gerar prévia.');
+        setPreviews(prev=>({...prev,[exam.externalKey]:response.data}));
       } catch(err) {
         setErrors(prev=>[...prev,`${exam.externalKey}: ${message(err)}`]);
       }
@@ -88,12 +100,12 @@ export default function ImportadorZipPage() {
       if (stop.current) break;
       if (results[exam.externalKey]?.status==='done') {idx++;setPosition(idx);continue;}
       try {
-        const response = await apiClient.post<{success:boolean;data:Result}>(ENDPOINT,{
+        const response = apiEnvelope<Result>(await apiClient.post<ApiEnvelope<Result>>(ENDPOINT,{
           action:'process',runId:run.runId,examKey:exam.externalKey,
           allowUnverifiedPublication: allow,
-        },{timeout:260000});
-        if (!response.data.success) throw new Error('Falha na importacao desta prova.');
-        setResults(prev=>({...prev,[exam.externalKey]:response.data.data}));
+        },{timeout:260000}));
+        if (!response.success) throw new Error('Falha na importacao desta prova.');
+        setResults(prev=>({...prev,[exam.externalKey]:response.data}));
       } catch (err) {
         const reason=message(err);
         setResults(prev=>({...prev,[exam.externalKey]:{status:'error',externalKey:exam.externalKey,message:reason}}));
