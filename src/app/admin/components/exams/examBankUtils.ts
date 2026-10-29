@@ -490,6 +490,16 @@ export const normalizeProvaRecord = (raw: unknown): Prova | null => {
     programmaticContent: conteudoProgramatico,
     conteudoProgramaticoDetalhado: conteudoProgramaticoDetalhado as Prova['conteudoProgramaticoDetalhado'],
     programmaticContentDetailed: conteudoProgramaticoDetalhado as Prova['programmaticContentDetailed'],
+    observedQuestionTopics: toRecordList(
+      rawRecord.observedQuestionTopics,
+      metadataRecord.observedQuestionTopics,
+      (metadataRecord.zipProgramEvidence as Record<string, unknown> | undefined)?.assuntos_cobrados_inferidos_das_questoes,
+    ).map((item) => ({
+      level: toText(item.nivel_origem ?? item.level),
+      name: toText(item.nome ?? item.name),
+      questionCount: toNumber(item.questoes_relacionadas ?? item.questionCount, 0),
+      status: toText(item.status),
+    })).filter((item) => item.name),
   };
 };
 

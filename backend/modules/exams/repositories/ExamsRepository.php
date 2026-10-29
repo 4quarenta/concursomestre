@@ -315,14 +315,17 @@ class ExamsRepository
         $stmt = $this->db->prepare("SELECT p.*, COUNT(DISTINCT qp.question_id) AS question_count
             FROM provas p
             LEFT JOIN question_provas qp ON qp.prova_id = p.id
-            WHERE p.slug = :slug
+            WHERE (p.slug = :slug OR JSON_CONTAINS(
+                    COALESCE(JSON_EXTRACT(p.metadata_json, '$.slugAliases'), JSON_ARRAY()),
+                    JSON_QUOTE(:alias_slug)
+                  ))
               AND p.archived_at IS NULL
               AND p.status_editorial = 'published'
               AND p.visibility_status = 'public'
               AND (p.scheduled_at IS NULL OR p.scheduled_at <= NOW())
             GROUP BY p.id
             LIMIT 1");
-        $stmt->execute([':slug' => $slug]);
+        $stmt->execute([':slug' => $slug, ':alias_slug' => $slug]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         return $row ? ($this->hydrateMany([$row])[0] ?? null) : null;
@@ -803,6 +806,19 @@ class ExamsRepository
         }
 
         $metadata = $this->decodeJson($row['metadata_json'] ?? null);
+        $programEvidence = is_array($metadata['zipProgramEvidence'] ?? null) ? $metadata['zipProgramEvidence'] : [];
+        $observedQuestionTopics = array_values(array_filter(array_map(static function ($item): ?array {
+            if (!is_array($item)) return null;
+            $name = trim((string) ($item['nome'] ?? $item['name'] ?? ''));
+            if ($name === '') return null;
+            return [
+                'level' => trim((string) ($item['nivel_origem'] ?? $item['level'] ?? '')),
+                'name' => $name,
+                'questionCount' => max(0, (int) ($item['questoes_relacionadas'] ?? $item['questionCount'] ?? 0)),
+                'status' => trim((string) ($item['status'] ?? '')),
+            ];
+        }, is_array($programEvidence['assuntos_cobrados_inferidos_das_questoes'] ?? null)
+            ? $programEvidence['assuntos_cobrados_inferidos_das_questoes'] : [])));
         $banca = $grouped['banca'][0] ?? $this->legacyTaxonomy((int) ($row['banca_id'] ?? 0));
         $orgao = $grouped['orgao'][0] ?? $this->legacyTaxonomy((int) ($row['orgao_id'] ?? 0));
         $cargo = $grouped['cargo'][0] ?? $this->legacyTaxonomy((int) ($row['cargo_id'] ?? 0));
@@ -888,6 +904,7 @@ class ExamsRepository
             'programmaticContentStatus' => $metadata['programmaticContentStatus'] ?? null,
             'programmaticContentFonte' => $metadata['programmaticContentFonte'] ?? null,
             'programmaticContentIntegralVerificado' => $metadata['programmaticContentIntegralVerificado'] ?? false,
+            'observedQuestionTopics' => $observedQuestionTopics,
             'requisitosDetalhados' => $metadata['requisitosDetalhados'] ?? [],
             'remuneracoesDetalhadas' => $metadata['remuneracoesDetalhadas'] ?? [],
             'vagasDetalhadas' => $metadata['vagasDetalhadas'] ?? [],

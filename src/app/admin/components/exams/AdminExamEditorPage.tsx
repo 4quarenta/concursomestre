@@ -3186,6 +3186,22 @@ Se algum campo não estiver no documento, deixe vazio ou array vazio.`, [
                 />
               </div>
               <div className="w-full min-w-0" style={{ gridColumn: '1 / -1' }}>
+                {examPreview?.observedQuestionTopics?.length ? (
+                  <section className="mb-4 rounded-sm border border-sky-200 bg-sky-50/70 p-4 dark:border-sky-900/70 dark:bg-sky-950/20">
+                    <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Assuntos observados nas questões</h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                      Extraídos das questões vinculadas; não equivalem a conteúdo oficial do edital. Para evitar apresentar inferências como oficiais, eles não são inseridos no editor de conteúdo programático.
+                    </p>
+                    <ul className="mt-3 grid gap-1.5 sm:grid-cols-2">
+                      {examPreview.observedQuestionTopics.map((item, index) => (
+                        <li key={`${item.level || 'assunto'}-${item.name}-${index}`} className="flex justify-between gap-3 rounded-sm border border-sky-100 bg-white px-3 py-2 text-xs dark:border-sky-900/50 dark:bg-slate-900">
+                          <span className="text-slate-800 dark:text-slate-100">{item.name}</span>
+                          {item.questionCount ? <span className="shrink-0 text-slate-500 dark:text-slate-400">{item.questionCount} quest.</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
                 <ProgrammaticArrayEditor
                   items={programmaticItems}
                   subjectOptions={subjectOptions}

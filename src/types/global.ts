@@ -359,6 +359,12 @@ export interface Prova {
   vacanciesDetailed?: ExamScopedTextItem[];
   conteudoProgramaticoDetalhado?: ExamProgrammaticContentItem[];
   programmaticContentDetailed?: ExamProgrammaticContentItem[];
+  observedQuestionTopics?: Array<{
+    level?: string;
+    name: string;
+    questionCount?: number;
+    status?: string;
+  }>;
   questoesVinculadas?: Array<string | number>;
   platformQuestionIds?: Array<string | number>;
   vagas?: Array<string | {

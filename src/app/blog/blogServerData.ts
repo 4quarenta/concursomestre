@@ -93,6 +93,7 @@ export interface PublicExamDetail extends Omit<PublicExamDirectoryItem, 'board' 
   subjects: PublicExamTaxonomy[];
   programmaticContent?: string[];
   programmaticContentDetailed?: Array<{disciplina?: string; materia?: string; secao?: string; topico?: string; assunto?: string; temas?: Array<string | {rotulo_normalizado?: string; nome?: string; assunto?: string}>}>;
+  observedQuestionTopics?: Array<{level?: string; name: string; questionCount?: number; status?: string}>;
   programmaticContentStatus?: string | null;
   programmaticContentFonte?: string | null;
   programmaticContentIntegralVerificado?: boolean;

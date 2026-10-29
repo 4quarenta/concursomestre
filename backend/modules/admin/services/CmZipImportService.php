@@ -595,7 +595,7 @@ final class CmZipImportService
 
     private function syncMetadata(string $externalId, array $meta, array $program, array $source, array $programEvidence, array $documentEvidence): array
     {
-        $stmt = $this->db->prepare('SELECT id,ano,metadata_json,data_prova,inscricoes_inicio,inscricoes_fim FROM provas WHERE source_provider = :provider AND source_external_id = :external_id LIMIT 1 FOR UPDATE');
+        $stmt = $this->db->prepare('SELECT id,ano,nome,slug,metadata_json,data_prova,inscricoes_inicio,inscricoes_fim FROM provas WHERE source_provider = :provider AND source_external_id = :external_id LIMIT 1 FOR UPDATE');
         $stmt->execute([':provider'=>'gran',':external_id'=>$externalId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$row) throw new RuntimeException('A prova nao foi localizada apos a importacao canonica.');
@@ -603,6 +603,15 @@ final class CmZipImportService
         if (!is_array($old)) $old=[];
         $incoming=$this->incomingExamMetadata($meta,$program,$source,$programEvidence,$documentEvidence);
         $combined = $this->mergeExistingMetadata($old,$incoming);
+        $currentSlug = trim((string) ($row['slug'] ?? ''));
+        $canonicalSlug = $this->uniqueExamSlug((string) ($row['nome'] ?? ''), (int) $row['id']);
+        if ($canonicalSlug !== '' && $canonicalSlug !== $currentSlug) {
+            $aliases = is_array($combined['slugAliases'] ?? null) ? $combined['slugAliases'] : [];
+            if ($currentSlug !== '' && !in_array($currentSlug, $aliases, true)) $aliases[] = $currentSlug;
+            $combined['slugAliases'] = array_values(array_filter($aliases, static fn ($alias) => is_string($alias) && preg_match('/^[a-z0-9-]{1,190}$/', $alias)));
+        } else {
+            $canonicalSlug = $currentSlug;
+        }
         $original=$meta['metadata']??[];
         $dateFields=[
             'data_prova'=>$original['dataProva']??null,
@@ -612,13 +621,34 @@ final class CmZipImportService
         foreach ($dateFields as $field=>$date) {
             if (!is_string($date) || !preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/',$date)) $dateFields[$field]=null;
         }
-        $update=$this->db->prepare('UPDATE provas SET metadata_json=:metadata, data_prova=COALESCE(data_prova,:exam_date), inscricoes_inicio=COALESCE(inscricoes_inicio,:start_date), inscricoes_fim=COALESCE(inscricoes_fim,:end_date) WHERE id=:id');
+        $update=$this->db->prepare('UPDATE provas SET slug=:slug, metadata_json=:metadata, data_prova=COALESCE(data_prova,:exam_date), inscricoes_inicio=COALESCE(inscricoes_inicio,:start_date), inscricoes_fim=COALESCE(inscricoes_fim,:end_date) WHERE id=:id');
         $update->execute([
+            ':slug'=>$canonicalSlug,
             ':metadata'=>json_encode($combined,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),
             ':id'=>$row['id'],':exam_date'=>$dateFields['data_prova'],
             ':start_date'=>$dateFields['inscricoes_inicio'],':end_date'=>$dateFields['inscricoes_fim'],
         ]);
         return ['id'=>(int)$row['id'], 'year'=>(int)$row['ano'], 'programDisciplines'=>count($program), 'programThemes'=>array_sum(array_map(fn($d)=>count($d['temas']),$program))];
+    }
+
+    private function uniqueExamSlug(string $title, int $examId): string
+    {
+        $title = trim($title);
+        if ($title === '') return '';
+        $ascii = function_exists('iconv') ? iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $title) : $title;
+        $base = strtolower((string) ($ascii !== false ? $ascii : $title));
+        $base = trim((string) preg_replace('/[^a-z0-9]+/', '-', $base), '-');
+        if ($base === '') return '';
+        $base = substr($base, 0, 180);
+        $exists = $this->db->prepare('SELECT id FROM provas WHERE slug=:slug AND id<>:id LIMIT 1');
+        $candidate = $base;
+        $suffix = 2;
+        while (true) {
+            $exists->execute([':slug'=>$candidate, ':id'=>$examId]);
+            if (!$exists->fetchColumn()) return $candidate;
+            $tail = '-'.$suffix++;
+            $candidate = substr($base, 0, 190 - strlen($tail)).$tail;
+        }
     }
 
     /** Resolve/create canonical matter/topic and link to the exam's booklet; existing links stay intact. */

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import { ArrowRight, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, Download, ExternalLink, FileText, GraduationCap, MapPin } from 'lucide-react';
 import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
 import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
@@ -41,6 +41,7 @@ export default async function PublicExamContent({ params, platformShell = false 
   const { slug } = await params;
   const exam = await fetchPublicExamDetailForServer(slug);
   if (!exam) notFound();
+  if (exam.slug && exam.slug !== slug) permanentRedirect(publicRoutes.exams.detail(exam.slug));
 
   const dates = [
     ['InscriÃ§Ãµes', exam.registrationStart && exam.registrationEnd ? `${formatDate(exam.registrationStart)} a ${formatDate(exam.registrationEnd)}` : null],
@@ -146,6 +147,23 @@ export default async function PublicExamContent({ params, platformShell = false 
                 </section>
               ) : <OfficialExamProgramSection slug={exam.slug} platformShell={platformShell} />;
             })()}
+
+            {exam.observedQuestionTopics?.length ? (
+              <section className={`rounded-md border border-sky-200 bg-sky-50/70 p-6 dark:border-sky-900/70 dark:bg-sky-950/20 ${cardSurfaceClass}`}>
+                <h2 className="text-xl font-black text-slate-950 dark:text-white">Assuntos observados nas questões</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  Estes assuntos foram identificados nas questões vinculadas. Eles ajudam a orientar os estudos, mas não são uma transcrição confirmada do edital.
+                </p>
+                <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+                  {exam.observedQuestionTopics.map((item, index) => (
+                    <li key={`${item.level || 'assunto'}-${item.name}-${index}`} className="flex items-start justify-between gap-3 rounded-sm border border-sky-100 bg-white px-3 py-2 text-sm dark:border-sky-900/50 dark:bg-slate-900">
+                      <span className="text-slate-800 dark:text-slate-100">{item.name}</span>
+                      {item.questionCount ? <span className="shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400">{item.questionCount} {item.questionCount === 1 ? 'questão' : 'questões'}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
 
             {(exam.subjects.length || exam.areas.length) ? (
               <section className={`rounded-md border border-slate-200 bg-white p-6 dark:border-slate-800 ${cardSurfaceClass}`}>

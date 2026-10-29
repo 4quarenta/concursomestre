@@ -220,6 +220,7 @@ class ExamsService
             'programmaticContentStatus' => $exam['programmaticContentStatus'] ?? null,
             'programmaticContentFonte' => $exam['programmaticContentFonte'] ?? null,
             'programmaticContentIntegralVerificado' => $exam['programmaticContentIntegralVerificado'] ?? false,
+            'observedQuestionTopics' => $exam['observedQuestionTopics'] ?? [],
             'stages' => $exam['etapas'] ?? [],
             'requirementsDetailed' => $exam['requisitosDetalhados'] ?? [],
             'remunerationsDetailed' => $exam['remuneracoesDetalhadas'] ?? [],
