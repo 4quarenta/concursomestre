@@ -256,6 +256,221 @@ final class CmZipImportService
         return $out;
     }
 
+    private function metadataHasValue(mixed $value): bool
+    {
+        return $value !== null && $value !== '' && $value !== [];
+    }
+
+    private function incomingExamMetadata(array $meta, array $program, array $source, array $programEvidence, array $documentEvidence): array
+    {
+        $flat=[];
+        foreach ($program as $discipline) foreach ($discipline['temas'] as $theme) {
+            $flat[]=['materia'=>$discipline['disciplina'],'topico'=>$theme,'assunto'=>'','secao'=>$discipline['secao']];
+        }
+        return [
+            'conteudoProgramatico'=>array_values(array_unique(array_column($program,'disciplina'))),
+            'programmaticContent'=>array_values(array_unique(array_column($program,'disciplina'))),
+            'conteudoProgramaticoDetalhado'=>$program,
+            'programmaticContentDetailed'=>$flat,
+            'programmaticContentStatus'=>(string)($programEvidence['status_extracao'] ?? 'edital_nao_localizado'),
+            'programmaticContentFonte'=>$programEvidence['fonte_programa'] ?? null,
+            'programmaticContentIntegralVerificado'=>false,
+            'valorInscricao'=>$meta['metadata']['valorInscricao'] ?? null,
+            'nivel'=>$meta['metadata']['nivel'] ?? null,
+            'tipoCaderno'=>$meta['metadata']['tipoCaderno'] ?? null,
+            'corCaderno'=>$meta['metadata']['corCaderno'] ?? null,
+            'orgaos'=>$meta['metadata']['orgaos'] ?? [],
+            'cargos'=>$meta['metadata']['cargos'] ?? [],
+            'focos'=>$meta['metadata']['focos'] ?? [],
+            'requisitosDetalhados'=>$meta['requisitosDetalhados'] ?? [],
+            'remuneracoesDetalhadas'=>$meta['remuneracoesDetalhadas'] ?? [],
+            'vagasDetalhadas'=>$meta['vagasDetalhadas'] ?? [],
+            'etapas'=>$meta['etapas'] ?? [],
+            'zipProgramEvidence'=>$programEvidence,
+            'zipSource'=>[
+                'documentEvidence'=>$documentEvidence,
+                'source'=>$source,'identity'=>$meta['identity'] ?? [],
+                'rawExamMetadata'=>$meta['metadata'] ?? [],
+                'documents'=>$meta['documents'] ?? [],'review'=>$meta['review'] ?? [],
+                'evidence'=>$meta['evidence'] ?? [],'historicalChanges'=>$meta['historicalChanges'] ?? [],
+            ],
+        ];
+    }
+
+    private function previewExamMetadata(array $existing, array $incoming): array
+    {
+        $willAdd=[];$willPreserve=[];$emptyInZip=[];
+        foreach ($incoming as $field=>$value) {
+            if (!$this->metadataHasValue($value)) {$emptyInZip[]=$field;continue;}
+            if ($this->metadataHasValue($existing[$field] ?? null)) $willPreserve[]=$field;
+            else $willAdd[]=$field;
+        }
+        return ['willAdd'=>$willAdd,'willPreserve'=>$willPreserve,'emptyInZip'=>$emptyInZip];
+    }
+
+    private function taxonomySlug(string $level, string $name, ?int $parent): string
+    {
+        return 'cm-zip-' . ($level==='materia'?'m':'t') . '-' . substr(hash('sha256',($parent??'root').'|'.$name),0,28);
+    }
+
+    private function previewTaxonomy(array $program, ?int $proofId): array
+    {
+        $disciplines=[];$topics=[];$ambiguous=[];
+        foreach ($program as $item) {
+            $name=trim((string)$item['disciplina']);
+            if ($name==='' || isset($disciplines[$name])) continue;
+            $find=$this->db->prepare("SELECT id FROM filters WHERE type='assunto' AND name=:n AND (taxonomy_level='materia' OR meta_materia=1) ORDER BY id LIMIT 2");
+            $find->execute([':n'=>$name]);$matches=array_map('intval',$find->fetchAll(PDO::FETCH_COLUMN));
+            if (count($matches)===1) $disciplines[$name]=['name'=>$name,'state'=>'exists','id'=>$matches[0]];
+            else {
+                $slug=$this->taxonomySlug('materia',$name,null);
+                $bySlug=$this->db->prepare('SELECT id FROM filters WHERE type="assunto" AND slug=:s LIMIT 1');$bySlug->execute([':s'=>$slug]);$slugId=(int)$bySlug->fetchColumn();
+                if ($slugId) $disciplines[$name]=['name'=>$name,'state'=>'exists_by_import_slug','id'=>$slugId,'canonicalMatches'=>count($matches)];
+                elseif (count($matches)>1) {$disciplines[$name]=['name'=>$name,'state'=>'ambiguous','canonicalMatches'=>count($matches)];$ambiguous[]='Matéria: '.$name;}
+                else $disciplines[$name]=['name'=>$name,'state'=>'create'];
+            }
+        }
+        foreach ($program as $item) {
+            $matterName=trim((string)$item['disciplina']);$matter=$disciplines[$matterName]??null;
+            if (!$matter) continue;
+            foreach (($item['temas']??[]) as $rawName) {
+                $name=trim((string)$rawName);if($name==='')continue;
+                $key=$matterName."\0".$name;if(isset($topics[$key]))continue;
+                if (($matter['state']??'')==='create') {$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'create_with_discipline'];continue;}
+                if (($matter['state']??'')==='ambiguous') {$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'blocked_by_ambiguous_discipline'];continue;}
+                $parent=(int)$matter['id'];
+                $find=$this->db->prepare("SELECT id FROM filters WHERE type='assunto' AND name=:n AND parent_id=:p AND taxonomy_level='topico' ORDER BY id LIMIT 2");
+                $find->execute([':n'=>$name,':p'=>$parent]);$matches=array_map('intval',$find->fetchAll(PDO::FETCH_COLUMN));
+                if(count($matches)===1)$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'exists','id'=>$matches[0]];
+                else {
+                    $slug=$this->taxonomySlug('topico',$name,$parent);
+                    $bySlug=$this->db->prepare('SELECT id FROM filters WHERE type="assunto" AND slug=:s LIMIT 1');$bySlug->execute([':s'=>$slug]);$slugId=(int)$bySlug->fetchColumn();
+                    if($slugId)$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'exists_by_import_slug','id'=>$slugId,'canonicalMatches'=>count($matches)];
+                    elseif(count($matches)>1){$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'ambiguous','canonicalMatches'=>count($matches)];$ambiguous[]='Tópico '.$matterName.' / '.$name;}
+                    else $topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'create'];
+                }
+            }
+        }
+        $bookletId=null;$bookletState='not_needed';
+        if ($program!==[] && $proofId!==null) {
+            $booklet=$this->db->prepare('SELECT id FROM prova_cadernos WHERE prova_id=:p ORDER BY ordem,id LIMIT 1');$booklet->execute([':p'=>$proofId]);
+            $value=$booklet->fetchColumn();$bookletId=$value===false?null:(int)$value;$bookletState=$bookletId===null?'create':'exists';
+        } elseif ($program!==[]) $bookletState='create_after_exam';
+        $linkIds=[];
+        foreach($disciplines as $item)if(isset($item['id']))$linkIds[(int)$item['id']]=true;
+        foreach($topics as $item)if(isset($item['id']))$linkIds[(int)$item['id']]=true;
+        $existingLinks=[];
+        if($bookletId!==null&&$linkIds){$ids=array_keys($linkIds);foreach(array_chunk($ids,400) as $chunk){$marks=implode(',',array_fill(0,count($chunk),'?'));$q=$this->db->prepare("SELECT filter_id FROM prova_caderno_filters WHERE caderno_id=? AND role='assunto' AND filter_id IN ({$marks})");$q->execute(array_merge([$bookletId],$chunk));foreach($q->fetchAll(PDO::FETCH_COLUMN) as $fid)$existingLinks[(int)$fid]=true;}}
+        $wanted=count($disciplines)+count($topics);$already=0;
+        foreach($disciplines as $item)if(isset($item['id'])&&isset($existingLinks[(int)$item['id']]))$already++;
+        foreach($topics as $item)if(isset($item['id'])&&isset($existingLinks[(int)$item['id']]))$already++;
+        return ['booklet'=>['state'=>$bookletState,'id'=>$bookletId],'disciplines'=>array_values($disciplines),'topics'=>array_values($topics),
+            'links'=>['wanted'=>$wanted,'existing'=>$already,'willCreate'=>max(0,$wanted-$already)],'ambiguous'=>$ambiguous];
+    }
+
+    private function previewQuestionEnrichment(ZipArchive $zip, string $prefix): array
+    {
+        $path=$prefix.'/enriquecimento.json';
+        if($zip->locateName($path)===false)return ['total'=>0,'willAdd'=>0,'alreadyPresent'=>0,'skipped'=>0,'items'=>[]];
+        $dataset=$this->readJson($zip,$path,16000000);$items=$dataset['questionEnrichments']??[];
+        $records=[];$ids=[];
+        foreach(is_array($items)?$items:[] as $index=>$item){
+            if(!is_array($item)){$records[$index]=['status'=>'invalid'];continue;}
+            $external='';
+            foreach(($item['sourceMappings']??[]) as $source)if(($source['provider']??'')==='gran'&&isset($source['externalId'])){$external=(string)$source['externalId'];break;}
+            if($external===''){$records[$index]=['status'=>'no_mapping'];continue;}
+            $records[$index]=['status'=>'pending','externalId'=>$external];$ids[$external]=true;
+        }
+        $questions=[];
+        foreach(array_chunk(array_keys($ids),200) as $chunk){$marks=implode(',',array_fill(0,count($chunk),'?'));$query=$this->db->prepare("SELECT id,source_external_id,data_json FROM questions WHERE source_provider='gran' AND source_external_id IN ({$marks}) ORDER BY id");$query->execute($chunk);foreach($query->fetchAll(PDO::FETCH_ASSOC) as $row){$key=(string)$row['source_external_id'];$questions[$key]??=$row;}}
+        $scheduled=[];$counts=['willAdd'=>0,'alreadyPresent'=>0,'skipped'=>0];
+        foreach($records as $index=>$record){
+            $status=$record['status'];$external=(string)($record['externalId']??'');
+            if($status==='pending'){
+                if(!isset($questions[$external]))$status='question_missing';
+                else{$raw=(string)($questions[$external]['data_json']??'');$json=$raw!==''?json_decode($raw,true):[];
+                    if(!is_array($json))$status='existing_json_invalid';
+                    elseif(isset($json['cmZipEnrichment'])||isset($scheduled[$external]))$status='already_present';
+                    else{$status='will_add';$scheduled[$external]=true;}}
+            }
+            if($status==='will_add')$counts['willAdd']++;
+            elseif($status==='already_present')$counts['alreadyPresent']++;
+            else $counts['skipped']++;
+        }
+        return ['total'=>count(is_array($items)?$items:[]),...$counts];
+    }
+
+    private function previewDocuments(ZipArchive $zip, string $prefix, array $meta, array $maps, ?int $proofId, string $externalId): array
+    {
+        $documents=$meta['documents']??[];if(!is_array($documents))$documents=[];
+        $assetPaths=[];foreach(($maps['assets']??[]) as $asset)if(is_array($asset)&&isset($asset['localPath']))$assetPaths[$prefix.'/'.ltrim((string)$asset['localPath'],'/')]=true;
+        $storage=new ObjectStorage();$existingUrls=[];
+        if($proofId!==null){$q=$this->db->prepare('SELECT caminho FROM prova_arquivos WHERE prova_id=:p');$q->execute([':p'=>$proofId]);foreach($q->fetchAll(PDO::FETCH_COLUMN) as $url)$existingUrls[(string)$url]=true;}
+        $out=[];
+        foreach($documents as $doc){
+            if(!is_array($doc))continue;
+            $path=(string)($doc['path']??'');$file=(string)($doc['fileName']??basename($path));$kind=(string)($doc['kind']??'');$verified=($doc['verifiedContentType']??false)===true;
+            $state='will_skip';$reason='Formato documental não suportado pelo vínculo de arquivos da prova.';$shaValid=false;$storageStatus='not_applicable';$visibility='not_applicable';$resolvedKind='';
+            $safe=str_starts_with($path,$prefix.'/')&&!str_contains($path,'..');$stat=$safe?$zip->statName($path):false;
+            if(!$safe)$reason='Caminho do documento inválido.';
+            elseif(!$stat)$reason='Arquivo não existe no ZIP.';
+            elseif((int)$stat['size']>30000000)$reason='Arquivo supera o limite de 30 MiB.';
+            elseif(!str_ends_with(strtolower($path),'.pdf')){if(isset($assetPaths[$path])){$state='asset_only';$reason='Este item não será anexado como documento de prova; ele aparece em asset-mappings e será verificado na seção de imagens das questões.';}else $reason='O processador de arquivos da prova só vincula PDFs; este item não será anexado como prova, gabarito ou edital.';}
+            else{
+                $bytes=$zip->getFromName($path);
+                if(!is_string($bytes)||!str_starts_with($bytes,'%PDF-'))$reason='Conteúdo não possui assinatura PDF válida.';
+                else{
+                    $sha=hash('sha256',$bytes);$shaValid=empty($doc['sha256'])||hash_equals((string)$doc['sha256'],$sha);
+                    if(!$shaValid)$reason='SHA-256 declarado no documento diverge do conteúdo.';
+                    else{
+                        $verifiedKind=$verified&&in_array($kind,['prova','gabarito','edital'],true);
+                        $resolvedKind=$verifiedKind?$kind:'outro';$visibility=$verifiedKind?'public':'internal';
+                        $key="exams/import-gran/{$externalId}/{$sha}.pdf";$url=$storage->publicUrl($key);
+                        $storageExists=$storage->exists($key);$storageStatus=$storageExists===true?'already_in_storage':($storageExists===false?'will_upload':'remote_storage_not_checked');
+                        $state=isset($existingUrls[$url])?'already_linked':'will_link';
+                        $reason=$verifiedKind?'Tipo documental verificado; será vinculado como '.$resolvedKind.'.':'Tipo não verificado; será salvo apenas como arquivo interno “outro”, sem apresentá-lo como prova, gabarito ou edital oficial.';
+                    }
+                }
+            }
+            $out[]=['fileName'=>$file,'path'=>$path,'declaredType'=>$kind?:'não informado','verifiedType'=>$verified,
+                'resolvedType'=>$resolvedKind?:null,'visibility'=>$visibility,'sizeBytes'=>(int)($stat['size']??0),'sha256Valid'=>$shaValid,
+                'state'=>$state,'storageState'=>$storageStatus,'reason'=>$reason];
+        }
+        return $out;
+    }
+
+    private function previewAssets(ZipArchive $zip, string $prefix, array $maps, array $sourceQuestions, string $externalId): array
+    {
+        $assets=$maps['assets']??[];if(!is_array($assets))$assets=[];
+        $questionsByTemp=[];$questionIds=[];
+        foreach($sourceQuestions as $question){$temp=(string)($question['tempId']??'');$source=$question['source']??[];$external=(string)($source['externalQuestionId']??$source['externalId']??$question['id']??'');if($temp!==''&&$external!==''){$questionsByTemp[$temp]=$external;$questionIds[$external]=true;}}
+        $dbQuestions=[];
+        foreach(array_chunk(array_keys($questionIds),200) as $chunk){$marks=implode(',',array_fill(0,count($chunk),'?'));$q=$this->db->prepare("SELECT id,source_external_id FROM questions WHERE source_provider='gran' AND source_external_id IN ({$marks}) ORDER BY id");$q->execute($chunk);foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row)$dbQuestions[(string)$row['source_external_id']]=(int)$row['id'];}
+        $storage=new ObjectStorage();$mime=['gif'=>'image/gif','png'=>'image/png','jpg'=>'image/jpeg','jpeg'=>'image/jpeg','webp'=>'image/webp'];$out=[];
+        foreach($assets as $asset){
+            if(!is_array($asset))continue;
+            $local=ltrim((string)($asset['localPath']??''),'/');$temp=(string)($asset['questionTempId']??'');$external=$questionsByTemp[$temp]??'';
+            $state='will_skip';$reason='Mapeamento de questão ausente.';$shaValid=false;$objectState='not_applicable';$linkState='not_applicable';
+            if($local!==''&&!str_contains($local,'..')&&!str_contains($local,'\\')){
+                $full=$prefix.'/'.$local;$stat=$zip->statName($full);$ext=strtolower(pathinfo($local,PATHINFO_EXTENSION));
+                if(!$stat||(int)$stat['size']>10000000)$reason='Imagem ausente ou maior que 10 MiB.';
+                elseif(!isset($mime[$ext]))$reason='Formato de imagem não suportado.';
+                else{$bytes=$zip->getFromName($full);$actual=is_string($bytes)?hash('sha256',$bytes):'';$shaValid=is_string($bytes)&&getimagesizefromstring($bytes)!==false&&(!isset($asset['sha256'])||hash_equals((string)$asset['sha256'],$actual));
+                    if(!$shaValid)$reason='Conteúdo de imagem inválido ou SHA-256 divergente.';
+                    elseif($external===''||!isset($dbQuestions[$external]))$reason='Questão de destino não encontrada; nenhum vínculo será criado.';
+                    else{$key="questions/import-gran/{$externalId}/{$actual}.{$ext}";$storageExists=$storage->exists($key);$objectState=$storageExists===true?'already_in_storage':($storageExists===false?'will_upload':'remote_storage_not_checked');
+                        $scope=(string)($asset['scope']??'statement');$optionId=null;
+                        if(preg_match('/^alternative:([A-Z])$/',$scope,$match)){$option=$this->db->prepare('SELECT id FROM question_options WHERE question_id=:q AND label=:label LIMIT 1');$option->execute([':q'=>$dbQuestions[$external],':label'=>$match[1]]);$optionId=$option->fetchColumn();if(!$optionId)$reason='A alternativa de destino não existe; a imagem não será vinculada.';}
+                        if($reason==='Mapeamento de questão ausente.'){$assetKey='cmzip-'.substr(hash('sha256',$external.'|'.(string)($asset['sha256']??($asset['originalUrl']??''))),0,44);$exists=$this->db->prepare('SELECT id FROM question_assets WHERE question_id=:q AND (external_key=:k) LIMIT 1');$exists->execute([':q'=>$dbQuestions[$external],':k'=>$assetKey]);$linkState=$exists->fetchColumn()?'already_linked':'will_link';$state=$linkState==='already_linked'?'already_linked':'will_link';$reason=$linkState==='already_linked'?'Imagem e vínculo já cadastrados; armazenamento usará a mesma chave determinística.':'Imagem válida; será armazenada e vinculada à questão existente.';}
+                    }
+                }
+            }
+            $out[]=['fileName'=>$local,'questionExternalId'=>$external?:null,'scope'=>(string)($asset['scope']??'statement'),'state'=>$state,
+                'storageState'=>$objectState,'linkState'=>$linkState,'sha256Valid'=>$shaValid,'reason'=>$reason];
+        }
+        return $out;
+    }
+
     /** Read-only database inventory. The only write is the private resumable preview state, never SQL. */
     public function preview(string $id, string $externalKey): array
     {
@@ -275,23 +490,48 @@ final class CmZipImportService
                 if($qid==='')throw new InvalidArgumentException('Questao sem identidade externa.');$ids[$qid]=true;
             }
             if(count($ids)!==(int)$selected['questions'])throw new InvalidArgumentException('Identidades de questoes duplicadas ou quantidade divergente.');
-            $proof=$this->db->prepare('SELECT id,ano,metadata_json FROM provas WHERE source_provider=:provider AND source_external_id=:external_id ORDER BY id LIMIT 2');
+            $proof=$this->db->prepare('SELECT id,ano,metadata_json,data_prova,inscricoes_inicio,inscricoes_fim FROM provas WHERE source_provider=:provider AND source_external_id=:external_id ORDER BY id LIMIT 2');
             $proof->execute([':provider'=>'gran',':external_id'=>$externalId]);$proofRows=$proof->fetchAll(PDO::FETCH_ASSOC);$row=$proofRows[0]??null;
             $existing=[];$duplicateQuestionIds=[];foreach(array_chunk(array_keys($ids),200) as $chunk){$qs=implode(',',array_fill(0,count($chunk),'?'));$st=$this->db->prepare("SELECT source_external_id,COUNT(*) AS n FROM questions WHERE source_provider='gran' AND source_external_id IN ({$qs}) GROUP BY source_external_id");$st->execute($chunk);foreach($st->fetchAll(PDO::FETCH_ASSOC) as $found){$qid=(string)$found['source_external_id'];$existing[$qid]=true;if((int)$found['n']>1)$duplicateQuestionIds[]=$qid;}}
             $program=$this->programDetails($zip,$prefix,$meta);
             $docs=$meta['documents']??[];$maps=$zip->locateName($prefix.'/asset-mappings.json')===false?[]:$this->readJson($zip,$prefix.'/asset-mappings.json');
             $missing=count($ids)-count($existing);$proofYear=$row?(int)$row['ano']:null;
-            $blocked=count($proofRows)>1||count($duplicateQuestionIds)>0||($row && $proofYear!==(int)$selected['year'])||(!$row&&$missing===0);
             $oldMeta=$row?json_decode((string)($row['metadata_json']??'{}'),true):[];if(!is_array($oldMeta))$oldMeta=[];
+            $source=$meta['source']??[];
+            $programEvidence=$zip->locateName($prefix.'/enriquecimento_programatico_taxonomia.json')===false?[]:$this->readJson($zip,$prefix.'/enriquecimento_programatico_taxonomia.json');
+            $documentEvidence=$zip->locateName($prefix.'/evidencias.json')===false?[]:$this->readJson($zip,$prefix.'/evidencias.json');
+            $incomingMeta=$this->incomingExamMetadata($meta,$program,$source,$programEvidence,$documentEvidence);
+            $proofMetadata=$this->previewExamMetadata($oldMeta,$incomingMeta);
+            $datePlan=['willAdd'=>[],'willPreserve'=>[],'emptyInZip'=>[]];
+            foreach(['data_prova'=>'dataProva','inscricoes_inicio'=>'dataInscricaoInicio','inscricoes_fim'=>'dataInscricaoFim'] as $column=>$sourceField){
+                $date=$meta['metadata'][$sourceField]??null;
+                if(!is_string($date)||!preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/',$date)){$datePlan['emptyInZip'][]=$column;continue;}
+                if(!empty($row[$column]))$datePlan['willPreserve'][]=$column;else $datePlan['willAdd'][]=$column;
+            }
+            $taxonomy=$this->previewTaxonomy($program,$row?(int)$row['id']:null);
+            $questionMetadata=$this->previewQuestionEnrichment($zip,$prefix);
+            $documentPlan=$this->previewDocuments($zip,$prefix,$meta,$maps,$row?(int)$row['id']:null,$externalId);
+            $assetPlan=$this->previewAssets($zip,$prefix,$maps,$payload['questions']??[],$externalId);
+            $proofPlan=['state'=>$row?'exists':'create_if_missing_questions','id'=>$row?(int)$row['id']:null,'year'=>$proofYear,
+                'metadata'=>$proofMetadata,'dates'=>$datePlan];
+            $blocked=count($proofRows)>1||count($duplicateQuestionIds)>0||($row && $proofYear!==(int)$selected['year'])||(!$row&&$missing===0)||$taxonomy['ambiguous']!==[];
+            $plan=['proof'=>$proofPlan,'taxonomy'=>$taxonomy,'questionMetadata'=>$questionMetadata,'documents'=>$documentPlan,'assets'=>$assetPlan];
+            $planHash=hash('sha256',json_encode($plan,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));
+            $docCounts=['willLink'=>0,'alreadyLinked'=>0,'willSkip'=>0,'assetOnly'=>0,'internal'=>0,'verifiedOfficial'=>0];foreach($documentPlan as $item){if($item['state']==='will_link')$docCounts['willLink']++;elseif($item['state']==='already_linked')$docCounts['alreadyLinked']++;elseif($item['state']==='asset_only')$docCounts['assetOnly']++;else$docCounts['willSkip']++;if(($item['resolvedType']??null)==='outro')$docCounts['internal']++;elseif(in_array(($item['resolvedType']??''),['prova','gabarito','edital'],true))$docCounts['verifiedOfficial']++;}
+            $assetCounts=['willLink'=>0,'alreadyLinked'=>0,'willSkip'=>0];foreach($assetPlan as $item){if($item['state']==='will_link')$assetCounts['willLink']++;elseif($item['state']==='already_linked')$assetCounts['alreadyLinked']++;else$assetCounts['willSkip']++;}
+            $message=$taxonomy['ambiguous']!==[]?'Taxonomias com nomes duplicados foram encontradas; revise antes de processar.':
+                ($missing?'Há questões ausentes. Processar exige confirmação explícita de publicação.':'Todas as questões já existem; o conteúdo delas será preservado e nenhuma será enviada ao importador canônico.');
+            if($docCounts['willSkip']>0||array_filter($documentPlan,fn($item)=>$item['resolvedType']==='outro'))$message.=' Há documentos que serão ignorados ou mantidos como arquivos internos; confira os detalhes.';
             $result=['status'=>$blocked?'blocked':'ready','externalKey'=>$externalKey,'title'=>$selected['title'],'year'=>$selected['year'],
                 'expectedQuestions'=>count($ids),'existingQuestions'=>count($existing),'missingQuestions'=>$missing,'examExists'=>(bool)$row,
                 'existingExamYear'=>$proofYear,'duplicateExamRecords'=>max(0,count($proofRows)-1),'duplicateQuestionIds'=>$duplicateQuestionIds,
                 'programDisciplines'=>count($program),'programThemes'=>array_sum(array_map(fn($d)=>count($d['temas']),$program)),
-                'documentEntries'=>is_array($docs)?count($docs):0,'assetEntries'=>count($maps['assets']??[]),
+                'documentEntries'=>count(is_array($docs)?$docs:[]),'assetEntries'=>count($maps['assets']??[]),
                 'existingMetadataKeys'=>count(array_filter($oldMeta,fn($v)=>$v!==null&&$v!==''&&$v!==[])),
                 'questionIdsHash'=>hash('sha256',implode("\n",array_keys($ids))),
-                'message'=>$blocked?(count($proofRows)>1?'Mais de um registro de prova usa esta identidade externa.':(count($duplicateQuestionIds)>0?'Há IDs externos de questão duplicados no banco.':($row?'Ano da prova existente diverge do manifesto.':'Prova ausente e todas as questões já existem; não é seguro criar a prova por este fluxo.'))):
-                    ($missing?'Há questões ausentes. Processar exige confirmação explícita de publicação.':'Todas as questões do ZIP já existem; nenhuma questão será enviada ao importador canônico.')];
+                'planHash'=>$planHash,'proof'=>$proofPlan,'questionMetadata'=>$questionMetadata,'taxonomy'=>$taxonomy,
+                'documents'=>$documentPlan,'documentActions'=>$docCounts,'assets'=>$assetPlan,'assetActions'=>$assetCounts,
+                'message'=>$blocked?(count($proofRows)>1?'Mais de um registro de prova usa esta identidade externa.':(count($duplicateQuestionIds)>0?'Há IDs externos de questão duplicados no banco.':($row&&$proofYear!==(int)$selected['year']?'Ano da prova existente diverge do manifesto.':($taxonomy['ambiguous']!==[]?'Taxonomias ambíguas: revise os filtros duplicados antes de processar.':'Prova ausente e todas as questões já existem; não é seguro criar a prova por este fluxo.')))):$message];
             $this->db->rollBack();
             $state['previews'][$externalKey]=$result;
             $this->writeState($state);
@@ -307,7 +547,7 @@ final class CmZipImportService
         $preview=$state['previews'][$externalKey]??null;
         if(!is_array($preview)||($preview['status']??'')!=='ready')throw new DomainException('Gere uma prévia sem gravação para esta prova antes de processar.');
         $fresh=$this->preview((string)$state['id'],$externalKey);
-        foreach(['status','existingQuestions','missingQuestions','examExists','existingExamYear','questionIdsHash'] as $key) if(($fresh[$key]??null)!==($preview[$key]??null))throw new DomainException('Os dados mudaram desde a prévia. Gere uma nova prévia antes de processar.');
+        foreach(['status','existingQuestions','missingQuestions','examExists','existingExamYear','questionIdsHash','planHash'] as $key) if(($fresh[$key]??null)!==($preview[$key]??null))throw new DomainException('Os dados mudaram desde a prévia. Gere uma nova prévia antes de processar.');
         if(($fresh['missingQuestions']??0)>0&&!$allowPublicUnverified)throw new DomainException('A prévia identificou questões ausentes; marque a confirmação expressa para permitir a publicação pelo serviço canônico.');
         return $fresh;
     }
@@ -316,7 +556,7 @@ final class CmZipImportService
     private function mergeExistingMetadata(array $existing, array $incoming): array
     {
         foreach ($incoming as $k=>$v) {
-            if (!array_key_exists($k,$existing) || $existing[$k] === null || $existing[$k] === '' || $existing[$k] === []) {
+            if ($this->metadataHasValue($v) && (!array_key_exists($k,$existing) || !$this->metadataHasValue($existing[$k]))) {
                 $existing[$k]=$v;
             }
         }
@@ -331,38 +571,7 @@ final class CmZipImportService
         if (!$row) throw new RuntimeException('A prova nao foi localizada apos a importacao canonica.');
         $old = json_decode((string)($row['metadata_json'] ?? '{}'), true);
         if (!is_array($old)) $old=[];
-        $programFlat=[];
-        foreach ($program as $d) foreach ($d['temas'] as $theme) {
-            $programFlat[]=['materia'=>$d['disciplina'],'topico'=>$theme,'assunto'=>'','secao'=>$d['secao']];
-        }
-        $incoming = [
-            'conteudoProgramatico'=>array_values(array_unique(array_column($program,'disciplina'))),
-            'programmaticContent'=>array_values(array_unique(array_column($program,'disciplina'))),
-            'conteudoProgramaticoDetalhado'=>$program,
-            'programmaticContentDetailed'=>$programFlat,
-            'programmaticContentStatus'=>(string)($programEvidence['status_extracao'] ?? 'edital_nao_localizado'),
-            'programmaticContentFonte'=>$programEvidence['fonte_programa'] ?? null,
-            'programmaticContentIntegralVerificado'=>false,
-            'valorInscricao'=>$meta['metadata']['valorInscricao'] ?? null,
-            'nivel'=>$meta['metadata']['nivel'] ?? null,
-            'tipoCaderno'=>$meta['metadata']['tipoCaderno'] ?? null,
-            'corCaderno'=>$meta['metadata']['corCaderno'] ?? null,
-            'orgaos'=>$meta['metadata']['orgaos'] ?? [],
-            'cargos'=>$meta['metadata']['cargos'] ?? [],
-            'focos'=>$meta['metadata']['focos'] ?? [],
-            'requisitosDetalhados'=>$meta['requisitosDetalhados'] ?? [],
-            'remuneracoesDetalhadas'=>$meta['remuneracoesDetalhadas'] ?? [],
-            'vagasDetalhadas'=>$meta['vagasDetalhadas'] ?? [],
-            'etapas'=>$meta['etapas'] ?? [],
-            'zipProgramEvidence'=>$programEvidence,
-            'zipSource'=>[
-                'documentEvidence'=>$documentEvidence,
-                'source'=>$source, 'identity'=>$meta['identity'] ?? [],
-                'rawExamMetadata'=>$meta['metadata'] ?? [],
-                'documents'=>$meta['documents'] ?? [], 'review'=>$meta['review'] ?? [],
-                'evidence'=>$meta['evidence'] ?? [], 'historicalChanges'=>$meta['historicalChanges'] ?? [],
-            ],
-        ];
+        $incoming=$this->incomingExamMetadata($meta,$program,$source,$programEvidence,$documentEvidence);
         $combined = $this->mergeExistingMetadata($old,$incoming);
         $original=$meta['metadata']??[];
         $dateFields=[
@@ -410,7 +619,7 @@ final class CmZipImportService
     private function findOrCreateFilter(string $level, string $name, ?int $parent, int &$created): int
     {
         $type='assunto';
-        $slug = 'cm-zip-' . ($level==='materia'?'m':'t') . '-' . substr(hash('sha256',($parent??'root').'|'.$name),0,28);
+        $slug = $this->taxonomySlug($level,$name,$parent);
         // Prefer exact existing canonical name ONLY for root matter and direct-child topic.
         $sql = $level==='materia'
             ? "SELECT id FROM filters WHERE type='assunto' AND name=:n AND (taxonomy_level='materia' OR meta_materia=1) LIMIT 2"

@@ -10,8 +10,51 @@ type Exam = { externalKey: string; title: string; year: number; questions: numbe
 type Run = { runId: string; inventory: { batchId: string; filesVerified: number; exams: Exam[] } };
 type ApiEnvelope<T> = { success: boolean; data: T };
 type Result = { status: 'done' | 'error'; externalKey: string; message?: string; existingQuestions?: number; sentToCanonical?: number; exam?: {id: number; programDisciplines: number; programThemes: number}; links?: {linked: number; created: number}; warnings?: string[] };
-type Preview = {status:'ready'|'blocked';externalKey:string;year:number;expectedQuestions:number;existingQuestions:number;missingQuestions:number;examExists:boolean;existingExamYear:number|null;programDisciplines:number;programThemes:number;documentEntries:number;assetEntries:number;message:string};
+type PreviewFile = {fileName:string;path?:string;declaredType?:string;verifiedType?:boolean;resolvedType?:string|null;visibility?:string;sizeBytes?:number;sha256Valid:boolean;state:string;storageState?:string;linkState?:string;reason:string;questionExternalId?:string|null;scope?:string};
+type Preview = {
+  status:'ready'|'blocked';externalKey:string;title:string;year:number;expectedQuestions:number;existingQuestions:number;missingQuestions:number;examExists:boolean;existingExamYear:number|null;
+  duplicateExamRecords:number;duplicateQuestionIds:string[];programDisciplines:number;programThemes:number;documentEntries:number;assetEntries:number;existingMetadataKeys:number;message:string;planHash:string;
+  proof:{state:string;id:number|null;year:number|null;metadata:{willAdd:string[];willPreserve:string[];emptyInZip:string[]};dates:{willAdd:string[];willPreserve:string[];emptyInZip:string[]}};
+  questionMetadata:{total:number;willAdd:number;alreadyPresent:number;skipped:number;items:Array<{externalId:string|null;status:string}>};
+  taxonomy:{booklet:{state:string;id:number|null};disciplines:Array<{name:string;state:string;id?:number;canonicalMatches?:number}>;topics:Array<{name:string;discipline:string;state:string;id?:number;canonicalMatches?:number}>;links:{wanted:number;existing:number;willCreate:number};ambiguous:string[]};
+  documents:PreviewFile[];documentActions:{willLink:number;alreadyLinked:number;willSkip:number;assetOnly:number;internal:number;verifiedOfficial:number};assets:PreviewFile[];assetActions:{willLink:number;alreadyLinked:number;willSkip:number};
+};
 const ENDPOINT = 'admin/zip_import.php';
+
+const fieldLabels:Record<string,string>={
+  conteudoProgramatico:'Disciplinas',programmaticContent:'Disciplinas (formato compatível)',conteudoProgramaticoDetalhado:'Programa detalhado',
+  programmaticContentDetailed:'Programa no formato do editor',programmaticContentStatus:'Situação do programa',programmaticContentFonte:'Fonte do programa',
+  programmaticContentIntegralVerificado:'Verificação integral do programa',valorInscricao:'Valor da inscrição',nivel:'Nível',tipoCaderno:'Tipo do caderno',
+  corCaderno:'Cor do caderno',orgaos:'Órgãos',cargos:'Cargos',focos:'Focos',requisitosDetalhados:'Requisitos',remuneracoesDetalhadas:'Remunerações',
+  vagasDetalhadas:'Vagas',etapas:'Etapas',zipProgramEvidence:'Evidência de extração do programa',zipSource:'Proveniência e evidências do ZIP',
+  data_prova:'Data da prova',inscricoes_inicio:'Início das inscrições',inscricoes_fim:'Fim das inscrições',
+};
+
+function previewLabel(state:string):string{
+  const labels:Record<string,string>={exists:'já existe',exists_by_import_slug:'já existe pelo identificador do importador',create:'será criada',
+    create_with_discipline:'será criado junto da matéria',ambiguous:'ambíguo: múltiplas correspondências',blocked_by_ambiguous_discipline:'bloqueado pela matéria ambígua',
+    already_linked:'vínculo já existe',will_link:'será vinculado',will_skip:'será ignorado',asset_only:'tratado na seção de imagens',already_in_storage:'já está no armazenamento',
+    will_upload:'será enviado ao armazenamento',remote_storage_not_checked:'presença remota não consultada',not_applicable:'não se aplica',
+    internal:'interno',public:'público após validação documental',
+    not_needed:'não é necessário',create_after_exam:'será criado após a prova',create_if_missing_questions:'será criado se houver questões novas',
+    already_present:'metadado já existe',will_add:'será adicionado',question_missing:'questão não encontrada',no_mapping:'sem vínculo de identidade',
+    existing_json_invalid:'JSON existente inválido; será preservado',invalid:'registro inválido'};
+  return labels[state]||state;
+}
+
+function PreviewDetails({preview:p}:{preview:Preview}){
+  const names=(keys:string[])=>keys.length?keys.map(k=>fieldLabels[k]||k).join(', '):'nenhum';
+  return <details className="mt-3 rounded-md border border-slate-200 p-3 text-xs dark:border-slate-700">
+    <summary className="cursor-pointer font-semibold">Detalhar ações previstas</summary>
+    <div className="mt-3 space-y-4">
+      <section><strong>Prova e metadados</strong><p>Prova {previewLabel(p.proof.state)}{p.proof.id?` (ID ${p.proof.id})`:''}. Metadados a completar: {names(p.proof.metadata.willAdd)}. Campos existentes que serão preservados: {names(p.proof.metadata.willPreserve)}. Datas a preencher: {names(p.proof.dates.willAdd)}; datas já definidas serão preservadas: {names(p.proof.dates.willPreserve)}.</p></section>
+      <section><strong>Questões e metadados das questões</strong><p>{p.existingQuestions} questões encontradas; {p.missingQuestions} serão criadas se houver confirmação. O conteúdo das questões existentes não será sobrescrito. Enriquecimentos: {p.questionMetadata.willAdd} a adicionar, {p.questionMetadata.alreadyPresent} já presentes e {p.questionMetadata.skipped} sem aplicação.</p></section>
+      <section><strong>Taxonomias e caderno</strong><p>Caderno: {previewLabel(p.taxonomy.booklet.state)}. Vínculos de filtros: {p.taxonomy.links.existing} já existentes, {p.taxonomy.links.willCreate} a criar. Matérias:</p><ul className="mt-1 list-disc pl-5">{p.taxonomy.disciplines.map((item,i)=><li key={`${item.name}-${i}`}>{item.name}: {previewLabel(item.state)}{item.canonicalMatches?` (${item.canonicalMatches} nomes iguais)`:''}</li>)}</ul><p className="mt-2">Tópicos:</p><ul className="mt-1 list-disc pl-5">{p.taxonomy.topics.map((item,i)=><li key={`${item.discipline}-${item.name}-${i}`}>{item.discipline} / {item.name}: {previewLabel(item.state)}{item.canonicalMatches?` (${item.canonicalMatches} nomes iguais)`:''}</li>)}</ul>{p.taxonomy.ambiguous.length>0&&<p className="mt-2 font-semibold text-red-700">Revisão necessária: {p.taxonomy.ambiguous.join('; ')}</p>}</section>
+      <section><strong>Arquivos de prova, gabarito e edital</strong><p>{p.documentActions.verifiedOfficial} com tipo validado, {p.documentActions.internal} serão mantidos como internos, {p.documentActions.assetOnly} serão tratados como imagens e {p.documentActions.willSkip} ignorados.</p><ul className="mt-1 list-disc space-y-1 pl-5">{p.documents.map((item,i)=><li key={`${item.path}-${i}`}><span className="font-medium">{item.fileName}</span> — tipo informado: {item.declaredType}; tipo efetivo: {item.resolvedType||'nenhum'}; visibilidade: {previewLabel(item.visibility||'not_applicable')}; ação: {previewLabel(item.state)}; arquivo: {previewLabel(item.storageState||'not_applicable')}; SHA-256 {item.sha256Valid?'válido':'não confirmado'}. {item.reason}</li>)}</ul></section>
+      <section><strong>Imagens vinculadas às questões</strong><ul className="mt-1 list-disc space-y-1 pl-5">{p.assets.map((item,i)=><li key={`${item.fileName}-${i}`}><span className="font-medium">{item.fileName||'arquivo sem caminho'}</span>{item.questionExternalId?` → questão ${item.questionExternalId}`:''} — vínculo: {previewLabel(item.state)}; arquivo: {previewLabel(item.storageState||'not_applicable')}; SHA-256 {item.sha256Valid?'válido':'não confirmado'}. {item.reason}</li>)}</ul></section>
+    </div>
+  </details>;
+}
 
 function message(error: unknown): string {
   const maybe = error as { response?: {data?: {message?: string}}; message?: string };
@@ -154,7 +197,18 @@ export default function ImportadorZipPage() {
       <div className="max-h-[500px] overflow-auto rounded-lg border border-slate-200 dark:border-slate-800">
         <table className="w-full text-left text-sm">
           <thead className="sticky top-0 bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-200"><tr><th className="p-3">Prova</th><th className="p-3">Ano</th><th className="p-3">Questões</th><th className="p-3">Prévia / resultado</th></tr></thead>
-          <tbody>{run.inventory.exams.map(exam=>{const r=results[exam.externalKey];const p=previews[exam.externalKey];return <tr key={exam.externalKey} className="border-t border-slate-200 dark:border-slate-800"><td className="p-3"><div className="font-medium">{exam.externalKey}</div><div className="max-w-[400px] truncate text-xs text-slate-500" title={exam.title}>{exam.title}</div></td><td className="p-3">{exam.year}</td><td className="p-3">{exam.questions}</td><td className="p-3">{r?.status==='done'?<div className="text-emerald-700 dark:text-emerald-400">Concluída · {r.existingQuestions||0} existentes · {r.sentToCanonical||0} enviadas · {r.exam?.programDisciplines||0} disciplinas</div>:r?.status==='error'?<span className="text-red-600">Falhou: {r.message}</span>:!p?'Prévia pendente':<div className={p.status==='blocked'?'text-red-700 dark:text-red-300':'text-slate-700 dark:text-slate-300'}><strong>{p.status==='blocked'?'Bloqueada':'Prévia pronta'}</strong> · {p.existingQuestions}/{p.expectedQuestions} questões existentes · {p.missingQuestions} ausentes · prova {p.examExists?'encontrada':'não encontrada'}<div className="text-xs">Programa: {p.programDisciplines} disciplinas / {p.programThemes} temas · documentos {p.documentEntries} · assets {p.assetEntries}. {p.message}</div></div>}</td></tr>})}</tbody>
+          <tbody>{run.inventory.exams.map(exam=>{
+            const r=results[exam.externalKey];const p=previews[exam.externalKey];
+            return <tr key={exam.externalKey} className="border-t border-slate-200 align-top dark:border-slate-800">
+              <td className="p-3"><div className="font-medium">{exam.externalKey}</div><div className="max-w-[400px] truncate text-xs text-slate-500" title={exam.title}>{exam.title}</div></td>
+              <td className="p-3">{exam.year}</td><td className="p-3">{exam.questions}</td>
+              <td className="p-3">{r?.status==='done'?<div className="text-emerald-700 dark:text-emerald-400">Concluída · {r.existingQuestions||0} existentes · {r.sentToCanonical||0} enviadas · {r.exam?.programDisciplines||0} disciplinas</div>:r?.status==='error'?<span className="text-red-600">Falhou: {r.message}</span>:!p?'Prévia pendente':<div className={p.status==='blocked'?'text-red-700 dark:text-red-300':'text-slate-700 dark:text-slate-300'}>
+                <strong>{p.status==='blocked'?'Bloqueada':'Prévia pronta'}</strong> · {p.existingQuestions}/{p.expectedQuestions} questões existentes · {p.missingQuestions} ausentes · prova {p.examExists?'encontrada':'será criada se necessário'}
+                <div className="text-xs">Programa: {p.programDisciplines} disciplinas / {p.programThemes} temas · metadados da prova: {p.proof.metadata.willAdd.length} a completar / {p.proof.metadata.willPreserve.length} preservar · taxonomias: {p.taxonomy.disciplines.filter(x=>x.state==='create').length} matérias e {p.taxonomy.topics.filter(x=>x.state.startsWith('create')).length} tópicos a criar · metadados de questões: {p.questionMetadata.willAdd} a adicionar · arquivos: {p.documentActions.verifiedOfficial} oficiais verificados, {p.documentActions.internal} internos, {p.documentActions.assetOnly} imagens, {p.documentActions.willSkip} ignorados · imagens: {p.assetActions.willLink} a vincular, {p.assetActions.willSkip} ignoradas. {p.message}</div>
+                <PreviewDetails preview={p}/>
+              </div>}</td>
+            </tr>;
+          })}</tbody>
         </table>
       </div>
     </section>}
