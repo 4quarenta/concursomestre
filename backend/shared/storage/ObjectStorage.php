@@ -116,6 +116,23 @@ final class ObjectStorage
         return $this->driver === 'local' ? is_file($this->localPath($storageKey)) : null;
     }
 
+    /** Return a local object's content hash without exposing its filesystem path. */
+    public function sha256(string $storageKey): ?string
+    {
+        $storageKey = $this->normalizeKey($storageKey);
+        if ($this->driver !== 'local') {
+            return null;
+        }
+
+        $path = $this->localPath($storageKey);
+        if (!is_file($path)) {
+            return null;
+        }
+
+        $hash = hash_file('sha256', $path);
+        return is_string($hash) ? $hash : null;
+    }
+
     public function publicUrl(string $storageKey): string
     {
         return $this->publicBaseUrl . '/' . implode('/', array_map('rawurlencode', explode('/', $this->normalizeKey($storageKey))));

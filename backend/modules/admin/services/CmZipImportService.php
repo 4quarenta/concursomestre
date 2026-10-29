@@ -400,12 +400,41 @@ final class CmZipImportService
         return ['total'=>count(is_array($items)?$items:[]),...$counts];
     }
 
+    /** Keep ZIP images on the same content-addressed path used by Gran ingestion. */
+    private function zipImageFormat(string $bytes): ?array
+    {
+        $info=@getimagesizefromstring($bytes);
+        if(!is_array($info))return null;
+        $formats=[
+            IMAGETYPE_GIF=>['extension'=>'gif','mimeType'=>'image/gif'],
+            IMAGETYPE_JPEG=>['extension'=>'jpg','mimeType'=>'image/jpeg'],
+            IMAGETYPE_PNG=>['extension'=>'png','mimeType'=>'image/png'],
+        ];
+        if(defined('IMAGETYPE_WEBP'))$formats[IMAGETYPE_WEBP]=['extension'=>'webp','mimeType'=>'image/webp'];
+        return $formats[(int)($info[2]??0)]??null;
+    }
+
+    /** Index locally stored files already attached to a proof by their actual bytes. */
+    private function existingExamFilesBySha(int $proofId, ObjectStorage $storage): array
+    {
+        $query=$this->db->prepare('SELECT caminho,tipo,metadata_json FROM prova_arquivos WHERE prova_id=:p');
+        $query->execute([':p'=>$proofId]);$files=[];
+        foreach($query->fetchAll(PDO::FETCH_ASSOC) as $row){
+            $url=(string)($row['caminho']??'');$key=$storage->storageKeyFromPublicUrl($url);
+            if($key===null)continue;
+            $sha=$storage->sha256($key);
+            if($sha===null)continue;
+            $files[$sha]??=['url'=>$url,'type'=>(string)($row['tipo']??'')];
+        }
+        return $files;
+    }
+
     private function previewDocuments(ZipArchive $zip, string $prefix, array $meta, array $maps, ?int $proofId, string $externalId): array
     {
         $documents=$meta['documents']??[];if(!is_array($documents))$documents=[];
         $assetPaths=[];foreach(($maps['assets']??[]) as $asset)if(is_array($asset)&&isset($asset['localPath']))$assetPaths[$prefix.'/'.ltrim((string)$asset['localPath'],'/')]=true;
-        $storage=new ObjectStorage();$existingUrls=[];
-        if($proofId!==null){$q=$this->db->prepare('SELECT caminho FROM prova_arquivos WHERE prova_id=:p');$q->execute([':p'=>$proofId]);foreach($q->fetchAll(PDO::FETCH_COLUMN) as $url)$existingUrls[(string)$url]=true;}
+        $storage=new ObjectStorage();$existingUrls=[];$existingFilesBySha=[];
+        if($proofId!==null){$q=$this->db->prepare('SELECT caminho FROM prova_arquivos WHERE prova_id=:p');$q->execute([':p'=>$proofId]);foreach($q->fetchAll(PDO::FETCH_COLUMN) as $url)$existingUrls[(string)$url]=true;$existingFilesBySha=$this->existingExamFilesBySha($proofId,$storage);}
         $out=[];
         foreach($documents as $doc){
             if(!is_array($doc))continue;
@@ -427,8 +456,9 @@ final class CmZipImportService
                         $resolvedKind=$verifiedKind?$kind:'outro';$visibility=$verifiedKind?'public':'internal';
                         $key="exams/import-gran/{$externalId}/{$sha}.pdf";$url=$storage->publicUrl($key);
                         $storageExists=$storage->exists($key);$storageStatus=$storageExists===true?'already_in_storage':($storageExists===false?'will_upload':'remote_storage_not_checked');
-                        $state=isset($existingUrls[$url])?'already_linked':'will_link';
-                        $reason=$verifiedKind?'Tipo documental verificado; será vinculado como '.$resolvedKind.'.':'Tipo não verificado; será salvo apenas como arquivo interno “outro”, sem apresentá-lo como prova, gabarito ou edital oficial.';
+                        $matchingFile=$existingFilesBySha[$sha]??null;
+                        if(isset($existingUrls[$url])||($matchingFile!==null&&$matchingFile['type']===$resolvedKind)){$state='already_linked';$storageStatus='already_in_storage';$reason='Este PDF já está anexado à prova com o mesmo conteúdo; nenhum item duplicado será criado.';}
+                        else{$state='will_link';if($matchingFile!==null){$url=$matchingFile['url'];$storageStatus='already_in_storage';$reason='O mesmo PDF já está armazenado e será reutilizado no vínculo.';}else{$reason=$verifiedKind?'Tipo documental verificado; será vinculado como '.$resolvedKind.'.':'Tipo não verificado; será salvo apenas como arquivo interno “outro”, sem apresentá-lo como prova, gabarito ou edital oficial.';}}
                     }
                 }
             }
@@ -439,7 +469,7 @@ final class CmZipImportService
         return $out;
     }
 
-    private function previewAssets(ZipArchive $zip, string $prefix, array $maps, array $sourceQuestions, string $externalId): array
+    private function previewAssets(ZipArchive $zip, string $prefix, array $maps, array $sourceQuestions): array
     {
         $assets=$maps['assets']??[];if(!is_array($assets))$assets=[];
         $questionsByTemp=[];$questionIds=[];
@@ -455,10 +485,10 @@ final class CmZipImportService
                 $full=$prefix.'/'.$local;$stat=$zip->statName($full);$ext=strtolower(pathinfo($local,PATHINFO_EXTENSION));
                 if(!$stat||(int)$stat['size']>10000000)$reason='Imagem ausente ou maior que 10 MiB.';
                 elseif(!isset($mime[$ext]))$reason='Formato de imagem não suportado.';
-                else{$bytes=$zip->getFromName($full);$actual=is_string($bytes)?hash('sha256',$bytes):'';$shaValid=is_string($bytes)&&getimagesizefromstring($bytes)!==false&&(!isset($asset['sha256'])||hash_equals((string)$asset['sha256'],$actual));
+                else{$bytes=$zip->getFromName($full);$format=is_string($bytes)?$this->zipImageFormat($bytes):null;$actual=is_string($bytes)?hash('sha256',$bytes):'';$shaValid=is_string($bytes)&&$format!==null&&(!isset($asset['sha256'])||hash_equals((string)$asset['sha256'],$actual));
                     if(!$shaValid)$reason='Conteúdo de imagem inválido ou SHA-256 divergente.';
                     elseif($external===''||!isset($dbQuestions[$external]))$reason='Questão de destino não encontrada; nenhum vínculo será criado.';
-                    else{$key="questions/import-gran/{$externalId}/{$actual}.{$ext}";$url=$storage->publicUrl($key);$storageExists=$storage->exists($key);$objectState=$storageExists===true?'already_in_storage':($storageExists===false?'will_upload':'remote_storage_not_checked');
+                    else{$canonicalExt=(string)$format['extension'];$key='question-assets/gran/'.substr($actual,0,2)."/{$actual}.{$canonicalExt}";$url=$storage->publicUrl($key);$storageExists=$storage->exists($key);$objectState=$storageExists===true?'already_in_storage':($storageExists===false?'will_upload':'remote_storage_not_checked');
                         $scope=(string)($asset['scope']??'statement');$optionId=null;
                         if(preg_match('/^alternative:([A-Z])$/',$scope,$match)){$option=$this->db->prepare('SELECT id FROM question_options WHERE question_id=:q AND label=:label LIMIT 1');$option->execute([':q'=>$dbQuestions[$external],':label'=>$match[1]]);$optionId=$option->fetchColumn();if(!$optionId)$reason='A alternativa de destino não existe; a imagem não será vinculada.';}
                         if($reason==='Mapeamento de questão ausente.'){$assetKey='cmzip-'.substr(hash('sha256',$external.'|'.(string)($asset['sha256']??($asset['originalUrl']??''))),0,44);$exists=$this->db->prepare('SELECT id FROM question_assets WHERE question_id=:q AND (external_key=:k OR public_url=:url) LIMIT 1');$exists->execute([':q'=>$dbQuestions[$external],':k'=>$assetKey,':url'=>$url]);$linkState=$exists->fetchColumn()?'already_linked':'will_link';$state=$linkState==='already_linked'?'already_linked':'will_link';$reason=$linkState==='already_linked'?'Imagem e vínculo já cadastrados; armazenamento usará a mesma chave determinística.':'Imagem válida; será armazenada e vinculada à questão existente.';}
@@ -511,7 +541,7 @@ final class CmZipImportService
             $taxonomy=$this->previewTaxonomy($program,$row?(int)$row['id']:null);
             $questionMetadata=$this->previewQuestionEnrichment($zip,$prefix);
             $documentPlan=$this->previewDocuments($zip,$prefix,$meta,$maps,$row?(int)$row['id']:null,$externalId);
-            $assetPlan=$this->previewAssets($zip,$prefix,$maps,$payload['questions']??[],$externalId);
+            $assetPlan=$this->previewAssets($zip,$prefix,$maps,$payload['questions']??[]);
             $proofPlan=['state'=>$row?'exists':'create_if_missing_questions','id'=>$row?(int)$row['id']:null,'year'=>$proofYear,
                 'metadata'=>$proofMetadata,'dates'=>$datePlan];
             $blocked=count($proofRows)>1||count($duplicateQuestionIds)>0||($row && $proofYear!==(int)$selected['year'])||(!$row&&$missing===0)||$taxonomy['ambiguous']!==[];
@@ -636,9 +666,9 @@ final class CmZipImportService
         return (int)$this->db->lastInsertId();
     }
 
-    private function storeArchiveAssets(ZipArchive $zip, string $prefix, array $questions, array $maps, string $externalId): array
+    private function storeArchiveAssets(ZipArchive $zip, string $prefix, array $questions, array $maps): array
     {
-        $replacements=[]; $stored=0; $missing=[];
+        $replacements=[]; $stored=0; $missing=[];$storage=new ObjectStorage();
         $mimeByExt=['gif'=>'image/gif','png'=>'image/png','jpg'=>'image/jpeg','jpeg'=>'image/jpeg','webp'=>'image/webp'];
         foreach ($maps['assets'] ?? [] as $a) {
             if (!is_array($a)) continue;
@@ -650,11 +680,12 @@ final class CmZipImportService
             $ext=strtolower(pathinfo($local,PATHINFO_EXTENSION));
             if (!isset($mimeByExt[$ext])) continue;
             $bytes=$zip->getFromName($full);
-            if (!is_string($bytes) || !getimagesizefromstring($bytes)) { $missing[]=$local;continue; }
+            if (!is_string($bytes) || !($format=$this->zipImageFormat($bytes))) { $missing[]=$local;continue; }
             $sha=hash('sha256',$bytes);
             if (isset($a['sha256']) && $a['sha256']!==$sha) { $missing[]=$local;continue; }
-            $file=(new ObjectStorage())->storeBytes($bytes,"questions/import-gran/{$externalId}/{$sha}.{$ext}",$mimeByExt[$ext]);
-            $stored++;
+            $key='question-assets/gran/'.substr($sha,0,2)."/{$sha}.{$format['extension']}";
+            if($storage->exists($key)===true)$file=['url'=>$storage->publicUrl($key)];
+            else{$file=$storage->storeBytes($bytes,$key,$format['mimeType']);$stored++;}
             foreach (['originalUrl','original_url','localPath'] as $field) {
                 if (isset($a[$field]) && is_string($a[$field]) && $a[$field]!=='') {
                     $replacements[$a[$field]]=$file['url'];
@@ -751,7 +782,7 @@ final class CmZipImportService
 
     private function storeDocuments(ZipArchive $zip, string $prefix, array $exam, array $metadata, string $externalId): array
     {
-        $stored=0;$skipped=0;
+        $stored=0;$skipped=0;$storage=new ObjectStorage();$existingFilesBySha=$this->existingExamFilesBySha((int)$exam['id'],$storage);
         foreach (($metadata['documents']??[]) as $d) {
             if (!is_array($d)) continue;
             $path=(string)($d['path']??'');
@@ -762,12 +793,14 @@ final class CmZipImportService
             if (!is_string($bytes) || !str_starts_with($bytes,'%PDF-')) {$skipped++;continue;}
             $sha=hash('sha256',$bytes);
             if (!empty($d['sha256']) && !hash_equals((string)$d['sha256'],$sha)) {$skipped++;continue;}
-            $url=(new ObjectStorage())->storeBytes($bytes,"exams/import-gran/{$externalId}/{$sha}.pdf",'application/pdf')['url'];
-            $exists=$this->db->prepare('SELECT id FROM prova_arquivos WHERE prova_id=:p AND caminho=:url LIMIT 1');
-            $exists->execute([':p'=>$exam['id'],':url'=>$url]);if ($exists->fetchColumn()) continue;
             $kind=(string)($d['kind']??'');
             $classified=in_array($kind,['prova','gabarito','edital'],true) && ($d['verifiedContentType']??false)===true;
             if (!$classified) $kind='outro';
+            $existingFile=$existingFilesBySha[$sha]??null;
+            if($existingFile!==null&&$existingFile['type']===$kind){$skipped++;continue;}
+            $url=$existingFile['url']??$storage->storeBytes($bytes,"exams/import-gran/{$externalId}/{$sha}.pdf",'application/pdf')['url'];
+            $exists=$this->db->prepare('SELECT id FROM prova_arquivos WHERE prova_id=:p AND caminho=:url LIMIT 1');
+            $exists->execute([':p'=>$exam['id'],':url'=>$url]);if ($exists->fetchColumn()) continue;
             $visibility=$classified?'public':'internal';
             $stmt=$this->db->prepare('SELECT COALESCE(MAX(versao),0)+1 FROM prova_arquivos WHERE prova_id=:p AND tipo=:k');
             $stmt->execute([':p'=>$exam['id'],':k'=>$kind]);$version=(int)$stmt->fetchColumn();
@@ -829,7 +862,7 @@ final class CmZipImportService
                 $importResult=['created'=>0,'duplicatesSkipped'=>0,'itemFailures'=>[]];
                 $assetResult=['stored'=>0,'missing'=>[],'urls'=>[],'sourceQuestions'=>$allSourceQuestions];
                 if (!$missing || $allowPublicUnverified) {
-                    [$withUrls,$assetResult]=$this->storeArchiveAssets($zip,$prefix,$allSourceQuestions,$maps,$externalId);
+                    [$withUrls,$assetResult]=$this->storeArchiveAssets($zip,$prefix,$allSourceQuestions,$maps);
                     $missingById=[];
                     foreach ($withUrls as $item) {
                         $sid=(string)(($item['source']??[])['externalQuestionId']??($item['source']??[])['externalId']??$item['id']??'');
