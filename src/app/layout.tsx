@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Script from 'next/script';
 import localFont from 'next/font/local';
 import { websiteManifest } from '@/config/platform';
 import { getConfiguredSiteUrl } from '@/config/siteUrl';
@@ -104,10 +105,13 @@ export default async function RootLayout(props: RootLayoutProps) {
     || publicMarketingSettings.analyticsId;
 
   return (
-    <html lang="pt-BR" className="h-full antialiased">
+    <html lang="pt-BR" className="h-full antialiased" suppressHydrationWarning>
       <body
         className={`${inter.variable} min-h-full flex flex-col font-sans no-scrollbar bg-slate-50 text-slate-900 transition-colors dark:bg-slate-900 dark:text-slate-100`}
       >
+        <Script id="initial-theme" strategy="beforeInteractive">
+          {`try{var savedTheme=localStorage.getItem('theme');var initialTheme=savedTheme==='dark'?'dark':'light';var root=document.documentElement;root.classList.remove('light','dark');root.classList.add(initialTheme);root.style.colorScheme=initialTheme;}catch(_){}`}
+        </Script>
         {resolvedGoogleAnalyticsId ? <DeferredGoogleAnalytics measurementId={resolvedGoogleAnalyticsId} /> : null}
         <NextAppProviders initialPublicSettings={publicMarketingSettings.settings as unknown as Record<string, unknown> | null}>{children}</NextAppProviders>
       </body>

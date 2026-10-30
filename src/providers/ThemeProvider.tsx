@@ -52,22 +52,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (typeof window === 'undefined') {
       return;
     }
-
-    const frameId = window.requestAnimationFrame(() => {
-      const saved = localStorage.getItem('theme');
-      if (saved === 'light' || saved === 'dark') {
-        setThemeState(saved);
-        setIsHydrated(true);
-        return;
-      }
-
-      setThemeState(DEFAULT_THEME);
-      setIsHydrated(true);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
+    const saved = localStorage.getItem('theme');
+    const initialTheme = saved === 'light' || saved === 'dark' ? saved : DEFAULT_THEME;
+    setThemeState(initialTheme);
+    setIsHydrated(true);
   }, []);
 
   /**
