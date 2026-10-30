@@ -406,21 +406,125 @@ final class CmZipImportService
         return 'cm-zip-' . ($level==='materia'?'m':'t') . '-' . substr(hash('sha256',($parent??'root').'|'.$name),0,28);
     }
 
+    /** Return exact-name canonical candidates ordered by real usage, then stable ID. */
+    private function taxonomyCandidates(string $level, string $name, ?int $parent): array
+    {
+        $scope = $level === 'materia'
+            ? "(f.taxonomy_level='materia' OR f.meta_materia=1)"
+            : "f.parent_id=:parent_id AND f.taxonomy_level='topico'";
+        $sql = "SELECT f.id, f.name, f.keywords_json,
+                       (SELECT COUNT(*) FROM question_filters qf WHERE qf.filter_id=f.id) AS question_usage,
+                       (SELECT COUNT(*) FROM prova_caderno_filters pcf WHERE pcf.filter_id=f.id) AS exam_usage
+                FROM filters f
+                WHERE f.type='assunto' AND {$scope} AND f.name=:name
+                ORDER BY (SELECT COUNT(*) FROM question_filters qf WHERE qf.filter_id=f.id)
+                       + (SELECT COUNT(*) FROM prova_caderno_filters pcf WHERE pcf.filter_id=f.id) DESC,
+                         f.id ASC";
+        $query = $this->db->prepare($sql);
+        $params = [':name'=>$name];
+        if ($level !== 'materia') $params[':parent_id'] = $parent;
+        $query->execute($params);
+        $wanted = $this->normalizedTaxonomyName($name);
+        return array_values(array_filter($query->fetchAll(PDO::FETCH_ASSOC) ?: [], fn(array $row): bool =>
+            $this->normalizedTaxonomyName((string)$row['name']) === $wanted
+        ));
+    }
+
+    private function normalizedTaxonomyName(string $value): string
+    {
+        $value = trim(mb_strtolower($value, 'UTF-8'));
+        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if ($ascii !== false) $value = $ascii;
+        return trim((string)preg_replace('/\s+/', ' ', $value));
+    }
+
+    private function normalizedTaxonomyKeyword(string $value): string
+    {
+        $value = trim(mb_strtolower($value, 'UTF-8'));
+        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if ($ascii !== false) $value = $ascii;
+        return trim((string)preg_replace('/[^a-z0-9]+/', ' ', $value));
+    }
+
+    private function hasTaxonomyKeyword(array $row, string $keyword): bool
+    {
+        $keywords = json_decode((string)($row['keywords_json'] ?? '[]'), true);
+        if (!is_array($keywords)) return false;
+        $wanted = $this->normalizedTaxonomyKeyword($keyword);
+        foreach ($keywords as $existing) {
+            if (is_string($existing) && $this->normalizedTaxonomyKeyword($existing) === $wanted) return true;
+        }
+        return false;
+    }
+
+    /** Resolve a unique keyword alias when the canonical display name differs. */
+    private function taxonomyKeywordCandidates(string $level, string $name, ?int $parent): array
+    {
+        $scope = $level === 'materia'
+            ? "(f.taxonomy_level='materia' OR f.meta_materia=1)"
+            : "f.parent_id=:parent_id AND f.taxonomy_level='topico'";
+        $sql = "SELECT f.id, f.name, f.keywords_json,
+                       (SELECT COUNT(*) FROM question_filters qf WHERE qf.filter_id=f.id) AS question_usage,
+                       (SELECT COUNT(*) FROM prova_caderno_filters pcf WHERE pcf.filter_id=f.id) AS exam_usage
+                FROM filters f WHERE f.type='assunto' AND {$scope}
+                ORDER BY (SELECT COUNT(*) FROM question_filters qf WHERE qf.filter_id=f.id)
+                       + (SELECT COUNT(*) FROM prova_caderno_filters pcf WHERE pcf.filter_id=f.id) DESC,
+                         f.id ASC";
+        $query = $this->db->prepare($sql);
+        $params = [];
+        if ($level !== 'materia') $params[':parent_id'] = $parent;
+        $query->execute($params);
+        $wanted = $this->normalizedTaxonomyKeyword($name);
+        $matches = [];
+        foreach ($query->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $keywords = json_decode((string)($row['keywords_json'] ?? '[]'), true);
+            if (!is_array($keywords)) continue;
+            foreach ($keywords as $keyword) {
+                if (is_string($keyword) && $this->normalizedTaxonomyKeyword($keyword) === $wanted) {
+                    $matches[] = $row;
+                    break;
+                }
+            }
+        }
+        return $matches;
+    }
+
+    private function addTaxonomyKeyword(int $filterId, string $keyword): bool
+    {
+        $query = $this->db->prepare('SELECT keywords_json FROM filters WHERE id=:id AND type="assunto" FOR UPDATE');
+        $query->execute([':id'=>$filterId]);
+        $raw = $query->fetchColumn();
+        if ($raw === false) throw new DomainException('Taxonomia selecionada deixou de existir.');
+        $keywords = json_decode((string)($raw ?? '[]'), true);
+        if (!is_array($keywords)) $keywords = [];
+        $wanted = $this->normalizedTaxonomyKeyword($keyword);
+        foreach ($keywords as $existing) {
+            if (is_string($existing) && $this->normalizedTaxonomyKeyword($existing) === $wanted) return false;
+        }
+        $keywords[] = trim($keyword);
+        $update = $this->db->prepare('UPDATE filters SET keywords_json=:keywords WHERE id=:id');
+        $update->execute([':keywords'=>json_encode(array_values($keywords),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),':id'=>$filterId]);
+        return true;
+    }
+
     private function previewTaxonomy(array $program, ?int $proofId): array
     {
         $disciplines=[];$topics=[];$ambiguous=[];
         foreach ($program as $item) {
             $name=trim((string)$item['disciplina']);
             if ($name==='' || isset($disciplines[$name])) continue;
-            $find=$this->db->prepare("SELECT id FROM filters WHERE type='assunto' AND name=:n AND (taxonomy_level='materia' OR meta_materia=1) ORDER BY id LIMIT 2");
-            $find->execute([':n'=>$name]);$matches=array_map('intval',$find->fetchAll(PDO::FETCH_COLUMN));
-            if (count($matches)===1) $disciplines[$name]=['name'=>$name,'state'=>'exists','id'=>$matches[0]];
+            $matches=$this->taxonomyCandidates('materia',$name,null);
+            if (count($matches)>=1) $disciplines[$name]=['name'=>$name,'state'=>count($matches)>1?'exists_duplicate_resolved':'exists','id'=>(int)$matches[0]['id'],'canonicalMatches'=>count($matches),'keywordsWillAdd'=>!$this->hasTaxonomyKeyword($matches[0],$name)];
             else {
-                $slug=$this->taxonomySlug('materia',$name,null);
-                $bySlug=$this->db->prepare('SELECT id FROM filters WHERE type="assunto" AND slug=:s LIMIT 1');$bySlug->execute([':s'=>$slug]);$slugId=(int)$bySlug->fetchColumn();
-                if ($slugId) $disciplines[$name]=['name'=>$name,'state'=>'exists_by_import_slug','id'=>$slugId,'canonicalMatches'=>count($matches)];
-                elseif (count($matches)>1) {$disciplines[$name]=['name'=>$name,'state'=>'ambiguous','canonicalMatches'=>count($matches)];$ambiguous[]='Matéria: '.$name;}
-                else $disciplines[$name]=['name'=>$name,'state'=>'create'];
+                $keywordMatches=$this->taxonomyKeywordCandidates('materia',$name,null);
+                if(count($keywordMatches)===1)$disciplines[$name]=['name'=>$name,'state'=>'exists_by_keyword','id'=>(int)$keywordMatches[0]['id'],'canonicalMatches'=>1,'keywordsWillAdd'=>false];
+                elseif(count($keywordMatches)>1){$disciplines[$name]=['name'=>$name,'state'=>'ambiguous','canonicalMatches'=>count($keywordMatches)];$ambiguous[]='Matéria: '.$name;}
+                else {
+                    $slug=$this->taxonomySlug('materia',$name,null);
+                    $bySlug=$this->db->prepare('SELECT id FROM filters WHERE type="assunto" AND slug=:s LIMIT 1');$bySlug->execute([':s'=>$slug]);$slugId=(int)$bySlug->fetchColumn();
+                    if ($slugId) $disciplines[$name]=['name'=>$name,'state'=>'exists_by_import_slug','id'=>$slugId,'canonicalMatches'=>0];
+                    else $disciplines[$name]=['name'=>$name,'state'=>'create'];
+                }
             }
         }
         foreach ($program as $item) {
@@ -432,15 +536,18 @@ final class CmZipImportService
                 if (($matter['state']??'')==='create') {$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'create_with_discipline'];continue;}
                 if (($matter['state']??'')==='ambiguous') {$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'blocked_by_ambiguous_discipline'];continue;}
                 $parent=(int)$matter['id'];
-                $find=$this->db->prepare("SELECT id FROM filters WHERE type='assunto' AND name=:n AND parent_id=:p AND taxonomy_level='topico' ORDER BY id LIMIT 2");
-                $find->execute([':n'=>$name,':p'=>$parent]);$matches=array_map('intval',$find->fetchAll(PDO::FETCH_COLUMN));
-                if(count($matches)===1)$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'exists','id'=>$matches[0]];
+                $matches=$this->taxonomyCandidates('topico',$name,$parent);
+                if(count($matches)>=1)$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>count($matches)>1?'exists_duplicate_resolved':'exists','id'=>(int)$matches[0]['id'],'canonicalMatches'=>count($matches),'keywordsWillAdd'=>!$this->hasTaxonomyKeyword($matches[0],$name)];
                 else {
-                    $slug=$this->taxonomySlug('topico',$name,$parent);
-                    $bySlug=$this->db->prepare('SELECT id FROM filters WHERE type="assunto" AND slug=:s LIMIT 1');$bySlug->execute([':s'=>$slug]);$slugId=(int)$bySlug->fetchColumn();
-                    if($slugId)$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'exists_by_import_slug','id'=>$slugId,'canonicalMatches'=>count($matches)];
-                    elseif(count($matches)>1){$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'ambiguous','canonicalMatches'=>count($matches)];$ambiguous[]='Tópico '.$matterName.' / '.$name;}
-                    else $topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'create'];
+                    $keywordMatches=$this->taxonomyKeywordCandidates('topico',$name,$parent);
+                    if(count($keywordMatches)===1)$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'exists_by_keyword','id'=>(int)$keywordMatches[0]['id'],'canonicalMatches'=>1,'keywordsWillAdd'=>false];
+                    elseif(count($keywordMatches)>1){$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'ambiguous','canonicalMatches'=>count($keywordMatches)];$ambiguous[]='Tópico '.$matterName.' / '.$name;}
+                    else {
+                        $slug=$this->taxonomySlug('topico',$name,$parent);
+                        $bySlug=$this->db->prepare('SELECT id FROM filters WHERE type="assunto" AND slug=:s LIMIT 1');$bySlug->execute([':s'=>$slug]);$slugId=(int)$bySlug->fetchColumn();
+                        if($slugId)$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'exists_by_import_slug','id'=>$slugId,'canonicalMatches'=>0];
+                        else $topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'create'];
+                    }
                 }
             }
         }
@@ -814,9 +921,11 @@ final class CmZipImportService
         $link=$this->db->prepare('INSERT IGNORE INTO prova_caderno_filters (caderno_id,filter_id,role,ordem) VALUES (:c,:f,"assunto",:o)');
         foreach ($program as $i=>$d) {
             $matter=$this->findOrCreateFilter('materia',$d['disciplina'],null,$created);
+            $this->addTaxonomyKeyword($matter, (string)$d['disciplina']);
             $link->execute([':c'=>$bookletId,':f'=>$matter,':o'=>$i+1]); $linked += $link->rowCount();
             foreach ($d['temas'] as $j=>$name) {
                 $topic=$this->findOrCreateFilter('topico',$name,$matter,$created);
+                $this->addTaxonomyKeyword($topic, (string)$name);
                 $link->execute([':c'=>$bookletId,':f'=>$topic,':o'=>1000+$i*100+$j+1]); $linked += $link->rowCount();
             }
         }
@@ -827,13 +936,11 @@ final class CmZipImportService
         $type='assunto';
         $slug = $this->taxonomySlug($level,$name,$parent);
         // Prefer exact existing canonical name ONLY for root matter and direct-child topic.
-        $sql = $level==='materia'
-            ? "SELECT id FROM filters WHERE type='assunto' AND name=:n AND (taxonomy_level='materia' OR meta_materia=1) LIMIT 2"
-            : "SELECT id FROM filters WHERE type='assunto' AND name=:n AND parent_id=:p AND taxonomy_level='topico' LIMIT 2";
-        $q=$this->db->prepare($sql);
-        $args=$level==='materia'?[':n'=>$name]:[':n'=>$name,':p'=>$parent];
-        $q->execute($args); $ids=$q->fetchAll(PDO::FETCH_COLUMN);
-        if (count($ids)===1) return (int)$ids[0];
+        $matches=$this->taxonomyCandidates($level,$name,$parent);
+        if ($matches) return (int)$matches[0]['id'];
+        $keywordMatches=$this->taxonomyKeywordCandidates($level,$name,$parent);
+        if (count($keywordMatches)===1) return (int)$keywordMatches[0]['id'];
+        if (count($keywordMatches)>1) throw new DomainException('Mais de uma taxonomia distinta contém a keyword: '.$name);
         $existing=$this->db->prepare('SELECT id FROM filters WHERE type="assunto" AND slug=:s LIMIT 1');
         $existing->execute([':s'=>$slug]);$id=(int)$existing->fetchColumn(); if ($id) return $id;
         $insert=$this->db->prepare('INSERT INTO filters (type,name,slug,parent_id,description,keywords_json,taxonomy_level,meta_materia) VALUES ("assunto",:n,:s,:p,:d,:k,:l,:m)');
