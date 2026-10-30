@@ -779,7 +779,10 @@ final class CmZipImportService
         $preview=$state['previews'][$externalKey]??null;
         if(!is_array($preview)||($preview['status']??'')!=='ready')throw new DomainException('Gere uma prévia sem gravação para esta prova antes de processar.');
         $fresh=$this->preview((string)$state['id'],$externalKey);
-        foreach(['status','existingQuestions','missingQuestions','examExists','existingExamYear','questionIdsHash','planHash'] as $key) if(($fresh[$key]??null)!==($preview[$key]??null))throw new DomainException('Os dados mudaram desde a prévia. Gere uma nova prévia antes de processar.');
+        // Earlier exams may create shared taxonomies or questions. Revalidate against
+        // current data instead of rejecting additive changes made by this same batch.
+        if (($fresh['status']??'')!=='ready') throw new DomainException((string)($fresh['message']??'A prévia atual exige revisão.'));
+        if (($fresh['questionIdsHash']??null)!==($preview['questionIdsHash']??null)) throw new DomainException('As identidades das questões mudaram desde a prévia.');
         if(($fresh['missingQuestions']??0)>0&&!$allowPublicUnverified)throw new DomainException('A prévia identificou questões ausentes; marque a confirmação expressa para permitir a publicação pelo serviço canônico.');
         return $fresh;
     }
@@ -1134,6 +1137,17 @@ final class CmZipImportService
         }
     }
 
+    /** ZIP IDs identify provider records, never database primary keys. */
+    private function canonicalImportQuestion(array $question): array
+    {
+        $source=is_array($question['source']??null)?$question['source']:[];
+        $externalId=trim((string)($source['externalQuestionId']??$source['externalId']??$question['id']??''));
+        if($externalId==='')throw new InvalidArgumentException('Questão sem identidade externa.');
+        unset($question['id']);
+        $question['source']=array_merge($source,['provider'=>'gran','externalId'=>$externalId]);
+        return $question;
+    }
+
     public function process(string $id, string $externalKey, bool $allowPublicUnverified): array
     {
         $state=$this->readState($id);
@@ -1147,6 +1161,7 @@ final class CmZipImportService
             $state=$this->readState($id);
             if (isset($state['results'][$externalKey]) && ($state['results'][$externalKey]['status'] ?? '')==='done') return $state['results'][$externalKey];
             $this->assertFreshPreview($state,$externalKey,$allowPublicUnverified);
+            $state=$this->readState($id);
             $zip=$this->archive($state);
             try {
                 $prefix=$selected['path'];
@@ -1195,7 +1210,7 @@ final class CmZipImportService
                 }
                 if ($missing) {
                     if (!$allowPublicUnverified) throw new DomainException('O backend canonico publica questoes. Confirme expressamente a publicacao dos itens novos, incluindo gabaritos nao verificados.');
-                    $payload['questions']=$missing;
+                    $payload['questions']=array_map(fn(array $question):array=>$this->canonicalImportQuestion($question),$missing);
                     $payload['exam']['provider']='gran';
                     $payload['exam']['externalId']=$externalId;
                     $payload['exam']['year']=(int)$selected['year'];
@@ -1207,7 +1222,10 @@ final class CmZipImportService
                         'schemaVersion'=>'question-import.v2','batches'=>[['clientKey'=>$externalKey,'payload'=>$payload]]
                     ]);
                     $failures=$importResult['itemFailures']??$importResult['item_failures']??[];
-                    if ($failures) throw new RuntimeException('Importacao canonica retornou pendencias: '.count($failures));
+                    if ($failures) {
+                        $details=array_map(static fn(array $failure):string=>'Questão '.($failure['questionNumber']??$failure['tempId']??'?').': '.($failure['message']??'Falha sem diagnóstico.'),array_slice($failures,0,10));
+                        throw new DomainException('Pendências na importação canônica: '.implode('; ',$details));
+                    }
                 }
                 $this->db->beginTransaction();
                 try {
