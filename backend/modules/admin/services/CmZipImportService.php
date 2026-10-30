@@ -627,6 +627,14 @@ final class CmZipImportService
         return $files;
     }
 
+    private function resolveDocumentZipPath(string $prefix, string $path): ?string
+    {
+        $path=trim(str_replace('\\','/',$path));
+        if($path==='' || str_contains($path,"\0") || str_starts_with($path,'/') || preg_match('/^[A-Za-z]:/',$path) || preg_match('#(^|/)\.\.?(/|$)#',$path)) return null;
+        $prefix=rtrim($prefix,'/');
+        return str_starts_with($path,$prefix.'/')?$path:$prefix.'/'.$path;
+    }
+
     private function previewDocuments(ZipArchive $zip, string $prefix, array $meta, array $maps, ?int $proofId, string $externalId): array
     {
         $documents=$meta['documents']??[];if(!is_array($documents))$documents=[];
@@ -638,13 +646,13 @@ final class CmZipImportService
             if(!is_array($doc))continue;
             $path=(string)($doc['path']??'');$file=(string)($doc['fileName']??basename($path));$kind=(string)($doc['kind']??'');$verified=($doc['verifiedContentType']??false)===true;
             $state='will_skip';$reason='Formato documental não suportado pelo vínculo de arquivos da prova.';$shaValid=false;$storageStatus='not_applicable';$visibility='not_applicable';$resolvedKind='';
-            $safe=str_starts_with($path,$prefix.'/')&&!str_contains($path,'..');$stat=$safe?$zip->statName($path):false;
-            if(!$safe)$reason='Caminho do documento inválido.';
+            $zipPath=$this->resolveDocumentZipPath($prefix,$path);$stat=$zipPath!==null?$zip->statName($zipPath):false;
+            if($zipPath===null)$reason='Caminho do documento inválido.';
             elseif(!$stat)$reason='Arquivo não existe no ZIP.';
             elseif((int)$stat['size']>30000000)$reason='Arquivo supera o limite de 30 MiB.';
             elseif(!str_ends_with(strtolower($path),'.pdf')){if(isset($assetPaths[$path])){$state='asset_only';$reason='Este item não será anexado como documento de prova; ele aparece em asset-mappings e será verificado na seção de imagens das questões.';}else $reason='O processador de arquivos da prova só vincula PDFs; este item não será anexado como prova, gabarito ou edital.';}
             else{
-                $bytes=$zip->getFromName($path);
+                $bytes=$zip->getFromName($zipPath);
                 if(!is_string($bytes)||!str_starts_with($bytes,'%PDF-'))$reason='Conteúdo não possui assinatura PDF válida.';
                 else{
                     $sha=hash('sha256',$bytes);$shaValid=empty($doc['sha256'])||hash_equals((string)$doc['sha256'],$sha);
@@ -660,7 +668,7 @@ final class CmZipImportService
                     }
                 }
             }
-            $out[]=['fileName'=>$file,'path'=>$path,'declaredType'=>$kind?:'não informado','verifiedType'=>$verified,
+            $out[]=['fileName'=>$file,'path'=>$zipPath??$path,'declaredType'=>$kind?:'não informado','verifiedType'=>$verified,
                 'resolvedType'=>$resolvedKind?:null,'visibility'=>$visibility,'sizeBytes'=>(int)($stat['size']??0),'sha256Valid'=>$shaValid,
                 'state'=>$state,'storageState'=>$storageStatus,'reason'=>$reason];
         }
@@ -1070,10 +1078,11 @@ final class CmZipImportService
         foreach (($metadata['documents']??[]) as $d) {
             if (!is_array($d)) continue;
             $path=(string)($d['path']??'');
-            if (!str_starts_with($path,$prefix.'/') || str_contains($path,'..')) {$skipped++;continue;}
-            $s=$zip->statName($path);
+            $zipPath=$this->resolveDocumentZipPath($prefix,$path);
+            if ($zipPath===null) {$skipped++;continue;}
+            $s=$zip->statName($zipPath);
             if (!$s || (int)$s['size']>30000000 || !str_ends_with(strtolower($path),'.pdf')) {$skipped++;continue;}
-            $bytes=$zip->getFromName($path);
+            $bytes=$zip->getFromName($zipPath);
             if (!is_string($bytes) || !str_starts_with($bytes,'%PDF-')) {$skipped++;continue;}
             $sha=hash('sha256',$bytes);
             if (!empty($d['sha256']) && !hash_equals((string)$d['sha256'],$sha)) {$skipped++;continue;}
@@ -1259,3 +1268,4 @@ final class CmZipImportService
         } finally {flock($lock,LOCK_UN);fclose($lock);}
     }
 }
+
