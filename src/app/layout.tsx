@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import localFont from 'next/font/local';
 import { websiteManifest } from '@/config/platform';
 import { getConfiguredSiteUrl } from '@/config/siteUrl';
 import NextAppProviders from '@/providers/NextAppProviders';
@@ -15,9 +15,14 @@ import './globals.css';
 const siteUrl = getConfiguredSiteUrl();
 const googleAdsenseAccount = process.env.NEXT_PUBLIC_GOOGLE_ADSENSE_ACCOUNT?.trim() || '';
 const googleAnalyticsId = process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID?.trim() || '';
-const inter = Inter({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700'],
+const inter = localFont({
+  src: [
+    { path: './fonts/Inter-300.ttf', weight: '300', style: 'normal' },
+    { path: './fonts/Inter-400.ttf', weight: '400', style: 'normal' },
+    { path: './fonts/Inter-500.ttf', weight: '500', style: 'normal' },
+    { path: './fonts/Inter-600.ttf', weight: '600', style: 'normal' },
+    { path: './fonts/Inter-700.ttf', weight: '700', style: 'normal' },
+  ],
   display: 'swap',
   variable: '--font-sans',
 });
