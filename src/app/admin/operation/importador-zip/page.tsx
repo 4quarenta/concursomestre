@@ -38,7 +38,7 @@ function previewLabel(state:string):string{
     already_linked:'vínculo já existe',will_link:'será vinculado',will_skip:'será ignorado',asset_only:'tratado na seção de imagens',already_in_storage:'já está no armazenamento',
     will_upload:'será enviado ao armazenamento',remote_storage_not_checked:'presença remota não consultada',not_applicable:'não se aplica',
     internal:'interno',public:'público após validação documental',
-    not_needed:'não é necessário',create_after_exam:'será criado após a prova',create_if_missing_questions:'será criado se houver questões novas',
+    not_needed:'não é necessário',create_after_exam:'será criado após a prova',create_if_missing_questions:'será criado se houver questões novas',create_draft:'será criada como rascunho interno',
     already_present:'metadado já existe',will_add:'será adicionado',question_missing:'questão não encontrada',no_mapping:'sem vínculo de identidade',
     existing_json_invalid:'JSON existente inválido; será preservado',invalid:'registro inválido'};
   return labels[state]||state;

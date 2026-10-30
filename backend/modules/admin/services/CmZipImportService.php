@@ -635,9 +635,9 @@ final class CmZipImportService
             $questionMetadata=$this->previewQuestionEnrichment($zip,$prefix);
             $documentPlan=$this->previewDocuments($zip,$prefix,$meta,$maps,$row?(int)$row['id']:null,$externalId);
             $assetPlan=$this->previewAssets($zip,$prefix,$maps,$payload['questions']??[]);
-            $proofPlan=['state'=>$row?'exists':'create_if_missing_questions','id'=>$row?(int)$row['id']:null,'year'=>$proofYear,
+            $proofPlan=['state'=>$row?'exists':($missing?'create_if_missing_questions':'create_draft'),'id'=>$row?(int)$row['id']:null,'year'=>$proofYear,
                 'metadata'=>$proofMetadata,'dates'=>$datePlan];
-            $blocked=count($proofRows)>1||count($duplicateQuestionIds)>0||($row && $proofYear!==(int)$selected['year'])||(!$row&&$missing===0)||$taxonomy['ambiguous']!==[];
+            $blocked=count($proofRows)>1||count($duplicateQuestionIds)>0||($row && $proofYear!==(int)$selected['year'])||$taxonomy['ambiguous']!==[];
             $programPresentation=$incomingMeta['programmaticContentPresentation']??[];
             $plan=['proof'=>$proofPlan,'taxonomy'=>$taxonomy,'programmaticContentPresentation'=>$programPresentation,
                 'questionMetadata'=>$questionMetadata,'documents'=>$documentPlan,'assets'=>$assetPlan];
@@ -646,6 +646,7 @@ final class CmZipImportService
             $assetCounts=['willLink'=>0,'alreadyLinked'=>0,'willSkip'=>0];foreach($assetPlan as $item){if($item['state']==='will_link')$assetCounts['willLink']++;elseif($item['state']==='already_linked')$assetCounts['alreadyLinked']++;else$assetCounts['willSkip']++;}
             $message=$taxonomy['ambiguous']!==[]?'Taxonomias com nomes duplicados foram encontradas; revise antes de processar.':
                 ($missing?'Há questões ausentes. Processar exige confirmação explícita de publicação.':'Todas as questões já existem; o conteúdo delas será preservado e nenhuma será enviada ao importador canônico.');
+            if(!$row && $missing===0)$message.=' A prova sera criada como rascunho interno e vinculada as questoes existentes.';
             if($docCounts['willSkip']>0||array_filter($documentPlan,fn($item)=>$item['resolvedType']==='outro'))$message.=' Há documentos que serão ignorados ou mantidos como arquivos internos; confira os detalhes.';
             $result=['status'=>$blocked?'blocked':'ready','externalKey'=>$externalKey,'title'=>$selected['title'],'year'=>$selected['year'],
                 'expectedQuestions'=>count($ids),'existingQuestions'=>count($existing),'missingQuestions'=>$missing,'examExists'=>(bool)$row,
@@ -657,7 +658,7 @@ final class CmZipImportService
                 'questionIdsHash'=>hash('sha256',implode("\n",array_keys($ids))),
                 'planHash'=>$planHash,'proof'=>$proofPlan,'questionMetadata'=>$questionMetadata,'taxonomy'=>$taxonomy,
                 'documents'=>$documentPlan,'documentActions'=>$docCounts,'assets'=>$assetPlan,'assetActions'=>$assetCounts,
-                'message'=>$blocked?(count($proofRows)>1?'Mais de um registro de prova usa esta identidade externa.':(count($duplicateQuestionIds)>0?'Há IDs externos de questão duplicados no banco.':($row&&$proofYear!==(int)$selected['year']?'Ano da prova existente diverge do manifesto.':($taxonomy['ambiguous']!==[]?'Taxonomias ambíguas: revise os filtros duplicados antes de processar.':'Prova ausente e todas as questões já existem; não é seguro criar a prova por este fluxo.')))):$message];
+                'message'=>$blocked?(count($proofRows)>1?'Mais de um registro de prova usa esta identidade externa.':(count($duplicateQuestionIds)>0?'Há IDs externos de questão duplicados no banco.':($row&&$proofYear!==(int)$selected['year']?'Ano da prova existente diverge do manifesto.':($taxonomy['ambiguous']!==[]?'Taxonomias ambíguas: revise os filtros duplicados antes de processar.':'A previa exige revisao antes do processamento.')))):$message];
             $this->db->rollBack();
             $state['previews'][$externalKey]=$result;
             $this->writeState($state);
@@ -986,6 +987,44 @@ final class CmZipImportService
         return ['stored'=>$stored,'skipped'=>$skipped];
     }
 
+    /** Resolve every question before creating an internal draft or adding occurrences. */
+    private function ensureExistingQuestionExam(string $externalId, array $selected, array $questions): void
+    {
+        if (!$this->db->inTransaction()) throw new LogicException('Vinculos exigem transacao ativa.');
+        if ($questions === []) throw new DomainException('Prova sem questoes identificadas.');
+        $resolved=[];
+        $find=$this->db->prepare('SELECT id FROM questions WHERE source_provider="gran" AND source_external_id=:external ORDER BY id FOR UPDATE');
+        foreach ($questions as $question) {
+            $source=$question['source']??[];
+            $qid=(string)($source['externalQuestionId']??$source['externalId']??$question['id']??'');
+            if ($qid==='' || isset($resolved[$qid])) throw new DomainException('Identidade de questao ausente ou repetida.');
+            $find->execute([':external'=>$qid]);$matches=$find->fetchAll(PDO::FETCH_COLUMN);
+            if(count($matches)!==1)throw new DomainException('Cada questao deve ter exatamente um registro canonico: '.$qid);
+            $number=$source['questionNumber']??null;
+            $resolved[$qid]=['id'=>(int)$matches[0],'number'=>is_numeric($number)&&(int)$number>0?(int)$number:null];
+        }
+        $find=$this->db->prepare('SELECT id,ano FROM provas WHERE source_provider="gran" AND source_external_id=:external FOR UPDATE');
+        $find->execute([':external'=>$externalId]);$rows=$find->fetchAll(PDO::FETCH_ASSOC);
+        if(count($rows)>1)throw new DomainException('Identidade externa da prova ambigua.');
+        $row=$rows[0]??null;
+        if($row && (int)$row['ano']!==(int)$selected['year'])throw new DomainException('Ano da prova diverge do manifesto.');
+        if(!$row){
+            $title=trim((string)($selected['title']??''));$year=(int)($selected['year']??0);
+            if($title===''||$year<1900||$year>2100)throw new DomainException('Titulo ou ano invalido.');
+            $slug=$this->uniqueExamSlug($title,0);
+            $insert=$this->db->prepare('INSERT INTO provas (nome,slug,ano,source_provider,source_external_id,status_editorial,visibility_status,metadata_json,created_by_user_id,updated_by_user_id) VALUES (:title,:slug,:year,"gran",:external,"draft","internal",:metadata,:creator,:updater)');
+            $insert->execute([':title'=>$title,':slug'=>$slug,':year'=>$year,':external'=>$externalId,':metadata'=>'{}',':creator'=>$this->actor,':updater'=>$this->actor]);
+            $examId=(int)$this->db->lastInsertId();
+        }else $examId=(int)$row['id'];
+        $findLink=$this->db->prepare('SELECT id FROM question_provas WHERE question_id=:question AND prova_id=:exam LIMIT 1 FOR UPDATE');
+        $insertLink=$this->db->prepare('INSERT INTO question_provas (question_id,prova_id,numero_na_prova,metadata_json) VALUES (:question,:exam,:number,:metadata)');
+        foreach($resolved as $question){
+            $findLink->execute([':question'=>$question['id'],':exam'=>$examId]);
+            if($findLink->fetchColumn()!==false)continue;
+            $insertLink->execute([':question'=>$question['id'],':exam'=>$examId,':number'=>$question['number'],':metadata'=>json_encode(['source'=>'zip_import','externalExamId'=>$externalId],JSON_THROW_ON_ERROR)]);
+        }
+    }
+
     public function process(string $id, string $externalKey, bool $allowPublicUnverified): array
     {
         $state=$this->readState($id);
@@ -1061,10 +1100,9 @@ final class CmZipImportService
                     $failures=$importResult['itemFailures']??$importResult['item_failures']??[];
                     if ($failures) throw new RuntimeException('Importacao canonica retornou pendencias: '.count($failures));
                 }
-                // Empty metadata-only exam: create a draft record, without exposing questions.
-                if (!$prior && !$missing) throw new RuntimeException('Prova sem registros existentes e sem questoes novas.');
                 $this->db->beginTransaction();
                 try {
+                    $this->ensureExistingQuestionExam($externalId,$selected,$allSourceQuestions);
                     $exam=$this->syncMetadata($externalId,$meta,$program,$meta['source']??[],$extra,$evidence);
                     $linked=$this->linkProgram($exam,$program);
                     $enrichment=$this->persistEnrichment($zip,$prefix);
