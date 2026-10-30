@@ -108,26 +108,12 @@ export default function ImportadorZipPage() {
     } catch (err) {setErrors([message(err)]);} finally {setBusy(false);}
   };
 
-  const resume = async () => {
-    if (!isAdmin || busy || !/^[a-f0-9]{32}$/.test(resumeId)) return;
-    setBusy(true); setErrors([]);
-    try {
-      const response = apiEnvelope<{runId:string;inventory:Run['inventory'];results:Record<string,Result>;previews:Record<string,Preview>}>(await apiClient.get<ApiEnvelope<{runId:string;inventory:Run['inventory'];results:Record<string,Result>;previews:Record<string,Preview>}>>(ENDPOINT,{params:{runId:resumeId}}));
-      if (!response.success) throw new Error('Execucao nao encontrada.');
-      setRun({runId:response.data.runId,inventory:response.data.inventory});
-      setResults(response.data.results || {});
-      setPreviews(response.data.previews || {});
-      setPosition(0);
-    } catch (error) {setErrors([message(error)]);} finally {setBusy(false);}
-  };
-
-  const generatePreview = async () => {
-    if (!isAdmin || !run || busy) return;
-    setBusy(true); setErrors([]); setPreviews({});
-    for (let i=0;i<run.inventory.exams.length;i++) {
-      const exam=run.inventory.exams[i];
+  const refreshPreviewSet = async (activeRun: Run) => {
+    setPreviews({});
+    for (let i=0;i<activeRun.inventory.exams.length;i++) {
+      const exam=activeRun.inventory.exams[i];
       try {
-        const response=apiEnvelope<Preview>(await apiClient.post<ApiEnvelope<Preview>>(ENDPOINT,{action:'preview',runId:run.runId,examKey:exam.externalKey},{timeout:240000}));
+        const response=apiEnvelope<Preview>(await apiClient.post<ApiEnvelope<Preview>>(ENDPOINT,{action:'preview',runId:activeRun.runId,examKey:exam.externalKey},{timeout:240000}));
         if(!response.success) throw new Error('Falha ao gerar prévia.');
         setPreviews(prev=>({...prev,[exam.externalKey]:response.data}));
       } catch(err) {
@@ -135,7 +121,32 @@ export default function ImportadorZipPage() {
       }
       setPosition(i+1);
     }
-    setBusy(false);
+  };
+
+  const resume = async () => {
+    if (!isAdmin || busy || !/^[a-f0-9]{32}$/.test(resumeId)) return;
+    setBusy(true); setErrors([]);
+    try {
+      const response = apiEnvelope<{runId:string;inventory:Run['inventory'];results:Record<string,Result>;previews:Record<string,Preview>}>(await apiClient.get<ApiEnvelope<{runId:string;inventory:Run['inventory'];results:Record<string,Result>;previews:Record<string,Preview>}>>(ENDPOINT,{params:{runId:resumeId}}));
+      if (!response.success) throw new Error('Execucao nao encontrada.');
+      const activeRun={runId:response.data.runId,inventory:response.data.inventory};
+      const savedPreviews=response.data.previews || {};
+      setRun(activeRun);
+      setResults(response.data.results || {});
+      setPreviews(savedPreviews);
+      setPosition(0);
+      // A stored preview may predate a deployed fix and keep an otherwise
+      // processable proof blocked. Refresh the whole pending plan on resume.
+      if(Object.values(savedPreviews).some(preview=>preview.status==='blocked')) {
+        await refreshPreviewSet(activeRun);
+      }
+    } catch (error) {setErrors([message(error)]);} finally {setBusy(false);}
+  };
+
+  const generatePreview = async () => {
+    if (!isAdmin || !run || busy) return;
+    setBusy(true); setErrors([]);
+    try { await refreshPreviewSet(run); } finally { setBusy(false); }
   };
 
   const process = async () => {
