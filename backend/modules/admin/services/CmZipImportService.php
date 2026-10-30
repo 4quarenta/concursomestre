@@ -457,7 +457,7 @@ final class CmZipImportService
         return false;
     }
 
-    /** Resolve a unique keyword alias when the canonical display name differs. */
+    /** Resolve keyword aliases in canonical usage order, with ID as a stable tie-breaker. */
     private function taxonomyKeywordCandidates(string $level, string $name, ?int $parent): array
     {
         $scope = $level === 'materia'
@@ -517,8 +517,7 @@ final class CmZipImportService
             if (count($matches)>=1) $disciplines[$name]=['name'=>$name,'state'=>count($matches)>1?'exists_duplicate_resolved':'exists','id'=>(int)$matches[0]['id'],'canonicalMatches'=>count($matches),'keywordsWillAdd'=>!$this->hasTaxonomyKeyword($matches[0],$name)];
             else {
                 $keywordMatches=$this->taxonomyKeywordCandidates('materia',$name,null);
-                if(count($keywordMatches)===1)$disciplines[$name]=['name'=>$name,'state'=>'exists_by_keyword','id'=>(int)$keywordMatches[0]['id'],'canonicalMatches'=>1,'keywordsWillAdd'=>false];
-                elseif(count($keywordMatches)>1){$disciplines[$name]=['name'=>$name,'state'=>'ambiguous','canonicalMatches'=>count($keywordMatches)];$ambiguous[]='Matéria: '.$name;}
+                if(count($keywordMatches)>=1)$disciplines[$name]=['name'=>$name,'state'=>'exists_by_keyword','id'=>(int)$keywordMatches[0]['id'],'canonicalMatches'=>count($keywordMatches),'keywordsWillAdd'=>false];
                 else {
                     $slug=$this->taxonomySlug('materia',$name,null);
                     $bySlug=$this->db->prepare('SELECT id FROM filters WHERE type="assunto" AND slug=:s LIMIT 1');$bySlug->execute([':s'=>$slug]);$slugId=(int)$bySlug->fetchColumn();
@@ -540,8 +539,7 @@ final class CmZipImportService
                 if(count($matches)>=1)$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>count($matches)>1?'exists_duplicate_resolved':'exists','id'=>(int)$matches[0]['id'],'canonicalMatches'=>count($matches),'keywordsWillAdd'=>!$this->hasTaxonomyKeyword($matches[0],$name)];
                 else {
                     $keywordMatches=$this->taxonomyKeywordCandidates('topico',$name,$parent);
-                    if(count($keywordMatches)===1)$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'exists_by_keyword','id'=>(int)$keywordMatches[0]['id'],'canonicalMatches'=>1,'keywordsWillAdd'=>false];
-                    elseif(count($keywordMatches)>1){$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'ambiguous','canonicalMatches'=>count($keywordMatches)];$ambiguous[]='Tópico '.$matterName.' / '.$name;}
+                    if(count($keywordMatches)>=1)$topics[$key]=['name'=>$name,'discipline'=>$matterName,'state'=>'exists_by_keyword','id'=>(int)$keywordMatches[0]['id'],'canonicalMatches'=>count($keywordMatches),'keywordsWillAdd'=>false];
                     else {
                         $slug=$this->taxonomySlug('topico',$name,$parent);
                         $bySlug=$this->db->prepare('SELECT id FROM filters WHERE type="assunto" AND slug=:s LIMIT 1');$bySlug->execute([':s'=>$slug]);$slugId=(int)$bySlug->fetchColumn();
@@ -939,8 +937,8 @@ final class CmZipImportService
         $matches=$this->taxonomyCandidates($level,$name,$parent);
         if ($matches) return (int)$matches[0]['id'];
         $keywordMatches=$this->taxonomyKeywordCandidates($level,$name,$parent);
-        if (count($keywordMatches)===1) return (int)$keywordMatches[0]['id'];
-        if (count($keywordMatches)>1) throw new DomainException('Mais de uma taxonomia distinta contém a keyword: '.$name);
+        // Same selection as previewTaxonomy; reuse aliases instead of creating duplicates.
+        if ($keywordMatches) return (int)$keywordMatches[0]['id'];
         $existing=$this->db->prepare('SELECT id FROM filters WHERE type="assunto" AND slug=:s LIMIT 1');
         $existing->execute([':s'=>$slug]);$id=(int)$existing->fetchColumn(); if ($id) return $id;
         $insert=$this->db->prepare('INSERT INTO filters (type,name,slug,parent_id,description,keywords_json,taxonomy_level,meta_materia) VALUES ("assunto",:n,:s,:p,:d,:k,:l,:m)');
