@@ -218,31 +218,57 @@ final class CmZipImportService
 
     private function programDetails(ZipArchive $zip, string $prefix, array $metadata): array
     {
-        $existing = $metadata['conteudoProgramaticoDetalhado'] ?? [];
+        $metadataFields = is_array($metadata['metadata'] ?? null) ? $metadata['metadata'] : [];
+        $existing = [];
+        foreach ([$metadata['conteudoProgramaticoDetalhado'] ?? null,$metadata['programmaticContentDetailed'] ?? null,
+            $metadataFields['conteudoProgramaticoDetalhado'] ?? null,$metadataFields['programmaticContentDetailed'] ?? null] as $candidate) {
+            if (is_array($candidate) && $candidate !== []) {$existing=$candidate;break;}
+        }
         if (is_array($existing) && $existing !== []) return $this->normalizePrograms($existing);
         $path = $prefix . '/enriquecimento_programatico_taxonomia.json';
-        if ($zip->locateName($path) === false) return [];
-        $document = $this->readJson($zip,$path);
-        return $this->normalizePrograms($document['conteudoProgramaticoDetalhado'] ?? []);
+        $document = $zip->locateName($path) === false ? [] : $this->readJson($zip,$path);
+        $presentation = [];
+        foreach ([$metadata['programmaticContentPresentation'] ?? null,$metadata['officialProgram'] ?? null,$metadata['programComposition'] ?? null,
+            $metadataFields['programmaticContentPresentation'] ?? null,$metadataFields['officialProgram'] ?? null,$metadataFields['programComposition'] ?? null,
+            $document['programmaticContentPresentation'] ?? null,$document['officialProgram'] ?? null,$document['programComposition'] ?? null] as $candidate) {
+            if (is_array($candidate) && $candidate !== []) {$presentation=$candidate;break;}
+        }
+        if (is_array($presentation) && is_array($presentation['subjects'] ?? null) && $presentation['subjects'] !== []) {
+            return $this->normalizePrograms($presentation['subjects']);
+        }
+        return $this->normalizePrograms($document['conteudoProgramaticoDetalhado'] ?? $document['programmaticContentDetailed'] ?? []);
     }
     private function normalizePrograms(mixed $raw): array
     {
         if (!is_array($raw)) return [];
+        if (isset($raw['subjects']) && is_array($raw['subjects'])) $raw = $raw['subjects'];
+        elseif (isset($raw['materias']) && is_array($raw['materias'])) $raw = $raw['materias'];
         $out=[];$positions=[];
         foreach ($raw as $d) {
             if (!is_array($d)) continue;
-            $name = trim((string)($d['disciplina'] ?? $d['materia'] ?? ''));
+            $name = trim((string)($d['name'] ?? $d['disciplina'] ?? $d['materia'] ?? ''));
             if ($name === '') continue;
             $section=trim((string)($d['secao'] ?? $d['topico'] ?? ''));
             $key=strtolower($name.'|'.$section);
             if (!isset($positions[$key])) {
                 $positions[$key]=count($out);
-                $out[]=['disciplina'=>$name,'secao'=>$section,'temas'=>[]];
+                $count=$d['questionCount']??$d['questoes']??$d['questoesPrevistas']??null;
+                $weight=$d['weight']??$d['pesoPorQuestao']??$d['peso']??null;
+                $out[]=['disciplina'=>$name,'secao'=>$section,'temas'=>[],
+                    'questionCount'=>is_numeric($count)?max(0,(int)$count):null,
+                    'weight'=>is_scalar($weight)?trim((string)$weight):null,
+                    'expanded'=>($d['expanded']??false)===true];
             }
             $idx=$positions[$key];$topics=[];
-            foreach (is_array($d['temas'] ?? null) ? $d['temas'] : [] as $t) {
+            $count=$d['questionCount']??$d['questoes']??$d['questoesPrevistas']??null;
+            $weight=$d['weight']??$d['pesoPorQuestao']??$d['peso']??null;
+            if ($out[$idx]['questionCount'] === null && is_numeric($count)) $out[$idx]['questionCount']=max(0,(int)$count);
+            if (($out[$idx]['weight'] === null || $out[$idx]['weight'] === '') && is_scalar($weight)) $out[$idx]['weight']=trim((string)$weight);
+            $out[$idx]['expanded']=$out[$idx]['expanded'] || ($d['expanded']??false)===true;
+            $rawTopics=$d['topics']??$d['temas']??$d['assuntos']??[];
+            foreach (is_array($rawTopics) ? $rawTopics : [] as $t) {
                 if (is_array($t)) {
-                    $val=trim((string)($t['assunto']??$t['rotulo_normalizado']??$t['nome']??$t['topico']??''));
+                    $val=trim((string)($t['assunto']??$t['rotulo_normalizado']??$t['nome']??$t['name']??$t['topico']??''));
                     if ($val!=='' && is_array($t['assuntos']??null)) foreach($t['assuntos'] as $a) { $a=trim((string)(is_array($a)?($a['nome']??$a['assunto']??''):$a));if($a!=='')$topics[]=$a; }
                     if ($val!=='') $topics[]=$val;
                 } else { $val=trim((string)$t);if($val!=='')$topics[]=$val; }
@@ -256,6 +282,69 @@ final class CmZipImportService
         return $out;
     }
 
+    /** Normalize the saved/display model used for a structured official exam program. */
+    private function programPresentation(array $meta, array $programEvidence, array $program): array
+    {
+        $metaFields=is_array($meta['metadata']??null)?$meta['metadata']:[];
+        $evidenceFields=is_array($programEvidence['metadata']??null)?$programEvidence['metadata']:[];
+        $raw=[];
+        foreach ([$meta['programmaticContentPresentation']??null,$meta['officialProgram']??null,$meta['programComposition']??null,
+            $metaFields['programmaticContentPresentation']??null,$metaFields['officialProgram']??null,$metaFields['programComposition']??null,
+            $programEvidence['programmaticContentPresentation']??null,$programEvidence['officialProgram']??null,$programEvidence['programComposition']??null,
+            $evidenceFields['programmaticContentPresentation']??null,$evidenceFields['officialProgram']??null,$evidenceFields['programComposition']??null] as $candidate) {
+            if(is_array($candidate)&&$candidate!==[]){$raw=$candidate;break;}
+        }
+        $sourceRows=is_array($raw['subjects']??null)?$this->normalizePrograms($raw['subjects']):[];
+        if(!$sourceRows)$sourceRows=$program;
+        $programByName=[];
+        foreach($program as $item){
+            $name=trim((string)($item['disciplina']??''));if($name==='')continue;
+            $key=function_exists('mb_strtolower')?mb_strtolower($name,'UTF-8'):strtolower($name);
+            if(!isset($programByName[$key]))$programByName[$key]=$item;
+            else $programByName[$key]['temas']=array_values(array_unique(array_merge($programByName[$key]['temas']??[],$item['temas']??[])));
+        }
+        foreach($sourceRows as &$item){
+            $key=function_exists('mb_strtolower')?mb_strtolower(trim((string)($item['disciplina']??'')),'UTF-8'):strtolower(trim((string)($item['disciplina']??'')));
+            $fallback=$programByName[$key]??null;if(!$fallback)continue;
+            if(($item['questionCount']??null)===null&&isset($fallback['questionCount']))$item['questionCount']=$fallback['questionCount'];
+            if(trim((string)($item['weight']??''))===''&&trim((string)($fallback['weight']??''))!=='')$item['weight']=$fallback['weight'];
+            $item['temas']=array_values(array_unique(array_merge($item['temas']??[],$fallback['temas']??[])));
+            $item['expanded']=($item['expanded']??false)||($fallback['expanded']??false);
+        }
+        unset($item);
+        $subjectsByName=[];$total=0;$hasCounts=false;$hasWeights=false;
+        foreach($sourceRows as $item){
+            $name=trim((string)($item['disciplina']??''));if($name==='')continue;
+            $count=isset($item['questionCount'])&&is_numeric($item['questionCount'])?max(0,(int)$item['questionCount']):null;
+            $weight=is_string($item['weight']??null)?trim($item['weight']):'';
+            $key=function_exists('mb_strtolower')?mb_strtolower($name, 'UTF-8'):strtolower($name);
+            if(!isset($subjectsByName[$key]))$subjectsByName[$key]=['name'=>$name,'questionCount'=>$count,'weight'=>$weight,'topics'=>[],'expanded'=>false];
+            elseif($subjectsByName[$key]['questionCount']===null&&$count!==null)$subjectsByName[$key]['questionCount']=$count;
+            if($subjectsByName[$key]['weight']===''&&$weight!=='')$subjectsByName[$key]['weight']=$weight;
+            if($weight!=='')$hasWeights=true;
+            if($count!==null)$hasCounts=true;
+            $topics=array_values(array_filter(array_map(static function($topic):string{
+                    if(is_array($topic))return trim((string)($topic['rotulo_normalizado']??$topic['nome']??$topic['assunto']??''));
+                    return trim((string)$topic);
+                },is_array($item['temas']??null)?$item['temas']:[]));
+            $subjectsByName[$key]['topics']=array_values(array_unique(array_merge($subjectsByName[$key]['topics'],$topics)));
+            $subjectsByName[$key]['expanded']=$subjectsByName[$key]['expanded']||($item['expanded']??false)===true;
+        }
+        $subjects=array_values($subjectsByName);
+        foreach($subjects as $subject)if($subject['questionCount']!==null)$total+=$subject['questionCount'];
+        $explicit=!empty($raw['subjects']);
+        if(!$subjects||(!$explicit&&!$hasCounts&&!$hasWeights))return [];
+        $providedTotal=$raw['totalQuestions']??$raw['totalQuestoes']??$metaFields['totalQuestions']??null;
+        $totalQuestions=is_numeric($providedTotal)?max(0,(int)$providedTotal):($hasCounts?$total:null);
+        $sourceUrl=trim((string)($raw['sourceUrl']??$raw['urlFonte']??$programEvidence['sourceUrl']??''));
+        if($sourceUrl!==''&&filter_var($sourceUrl,FILTER_VALIDATE_URL)===false)$sourceUrl='';
+        if($sourceUrl!==''&&strtolower((string)parse_url($sourceUrl,PHP_URL_SCHEME))!=='https')$sourceUrl='';
+        $sourceLabel=trim((string)($raw['sourceLabel']??$raw['fonte']??$programEvidence['sourceLabel']??$programEvidence['fonte_programa']??''));
+        $summary=trim((string)($raw['summary']??$raw['description']??$raw['resumo']??''));
+        return ['schemaVersion'=>'cm-exam-program.v1','sourceUrl'=>$sourceUrl?:null,'sourceLabel'=>$sourceLabel?:null,
+            'summary'=>$summary?:null,'totalQuestions'=>$totalQuestions,'subjects'=>$subjects];
+    }
+
     private function metadataHasValue(mixed $value): bool
     {
         return $value !== null && $value !== '' && $value !== [];
@@ -267,6 +356,7 @@ final class CmZipImportService
         foreach ($program as $discipline) foreach ($discipline['temas'] as $theme) {
             $flat[]=['materia'=>$discipline['disciplina'],'topico'=>$theme,'assunto'=>'','secao'=>$discipline['secao']];
         }
+        $presentation=$this->programPresentation($meta,$programEvidence,$program);
         return [
             'conteudoProgramatico'=>array_values(array_unique(array_column($program,'disciplina'))),
             'programmaticContent'=>array_values(array_unique(array_column($program,'disciplina'))),
@@ -275,6 +365,7 @@ final class CmZipImportService
             'programmaticContentStatus'=>(string)($programEvidence['status_extracao'] ?? 'edital_nao_localizado'),
             'programmaticContentFonte'=>$programEvidence['fonte_programa'] ?? null,
             'programmaticContentIntegralVerificado'=>false,
+            'programmaticContentPresentation'=>$presentation,
             'valorInscricao'=>$meta['metadata']['valorInscricao'] ?? null,
             'nivel'=>$meta['metadata']['nivel'] ?? null,
             'tipoCaderno'=>$meta['metadata']['tipoCaderno'] ?? null,
@@ -545,7 +636,9 @@ final class CmZipImportService
             $proofPlan=['state'=>$row?'exists':'create_if_missing_questions','id'=>$row?(int)$row['id']:null,'year'=>$proofYear,
                 'metadata'=>$proofMetadata,'dates'=>$datePlan];
             $blocked=count($proofRows)>1||count($duplicateQuestionIds)>0||($row && $proofYear!==(int)$selected['year'])||(!$row&&$missing===0)||$taxonomy['ambiguous']!==[];
-            $plan=['proof'=>$proofPlan,'taxonomy'=>$taxonomy,'questionMetadata'=>$questionMetadata,'documents'=>$documentPlan,'assets'=>$assetPlan];
+            $programPresentation=$incomingMeta['programmaticContentPresentation']??[];
+            $plan=['proof'=>$proofPlan,'taxonomy'=>$taxonomy,'programmaticContentPresentation'=>$programPresentation,
+                'questionMetadata'=>$questionMetadata,'documents'=>$documentPlan,'assets'=>$assetPlan];
             $planHash=hash('sha256',json_encode($plan,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));
             $docCounts=['willLink'=>0,'alreadyLinked'=>0,'willSkip'=>0,'assetOnly'=>0,'internal'=>0,'verifiedOfficial'=>0];foreach($documentPlan as $item){if($item['state']==='will_link')$docCounts['willLink']++;elseif($item['state']==='already_linked')$docCounts['alreadyLinked']++;elseif($item['state']==='asset_only')$docCounts['assetOnly']++;else$docCounts['willSkip']++;if(($item['resolvedType']??null)==='outro')$docCounts['internal']++;elseif(in_array(($item['resolvedType']??''),['prova','gabarito','edital'],true))$docCounts['verifiedOfficial']++;}
             $assetCounts=['willLink'=>0,'alreadyLinked'=>0,'willSkip'=>0];foreach($assetPlan as $item){if($item['state']==='will_link')$assetCounts['willLink']++;elseif($item['state']==='already_linked')$assetCounts['alreadyLinked']++;else$assetCounts['willSkip']++;}
@@ -556,6 +649,7 @@ final class CmZipImportService
                 'expectedQuestions'=>count($ids),'existingQuestions'=>count($existing),'missingQuestions'=>$missing,'examExists'=>(bool)$row,
                 'existingExamYear'=>$proofYear,'duplicateExamRecords'=>max(0,count($proofRows)-1),'duplicateQuestionIds'=>$duplicateQuestionIds,
                 'programDisciplines'=>count($program),'programThemes'=>array_sum(array_map(fn($d)=>count($d['temas']),$program)),
+                'programmaticContentPresentation'=>$programPresentation,
                 'documentEntries'=>count(is_array($docs)?$docs:[]),'assetEntries'=>count($maps['assets']??[]),
                 'existingMetadataKeys'=>count(array_filter($oldMeta,fn($v)=>$v!==null&&$v!==''&&$v!==[])),
                 'questionIdsHash'=>hash('sha256',implode("\n",array_keys($ids))),
@@ -586,10 +680,59 @@ final class CmZipImportService
     private function mergeExistingMetadata(array $existing, array $incoming): array
     {
         foreach ($incoming as $k=>$v) {
+            if ($k === 'programmaticContentPresentation'
+                && is_array($existing[$k] ?? null) && $existing[$k] !== []
+                && is_array($v) && $v !== []) {
+                $existing[$k] = $this->mergeProgramPresentation($existing[$k], $v);
+                continue;
+            }
             if ($this->metadataHasValue($v) && (!array_key_exists($k,$existing) || !$this->metadataHasValue($existing[$k]))) {
                 $existing[$k]=$v;
             }
         }
+        return $existing;
+    }
+
+    /** Add missing presentation details while retaining the previously stored values. */
+    private function mergeProgramPresentation(array $existing, array $incoming): array
+    {
+        $topicList = static function (mixed $values): array {
+            if (!is_array($values)) return [];
+            $topics=[];
+            foreach($values as $value){
+                if(is_array($value))$value=$value['name']??$value['nome']??$value['assunto']??$value['topico']??'';
+                if(!is_scalar($value))continue;
+                $value=trim((string)$value);if($value!=='')$topics[]=$value;
+            }
+            return array_values(array_unique($topics));
+        };
+        foreach (['schemaVersion','sourceUrl','sourceLabel','summary','totalQuestions'] as $key) {
+            if (!$this->metadataHasValue($existing[$key] ?? null) && $this->metadataHasValue($incoming[$key] ?? null)) {
+                $existing[$key] = $incoming[$key];
+            }
+        }
+        $subjects = is_array($existing['subjects'] ?? null) ? $existing['subjects'] : [];
+        $positions = [];
+        foreach ($subjects as $index => $subject) {
+            if (!is_array($subject)) continue;
+            $name=trim((string)($subject['name']??$subject['disciplina']??$subject['materia']??''));
+            if($name==='')continue;
+            $key=function_exists('mb_strtolower')?mb_strtolower($name,'UTF-8'):strtolower($name);
+            $positions[$key]=$index;
+        }
+        foreach (is_array($incoming['subjects'] ?? null) ? $incoming['subjects'] : [] as $subject) {
+            if (!is_array($subject)) continue;
+            $name=trim((string)($subject['name']??$subject['disciplina']??$subject['materia']??''));
+            if($name==='')continue;
+            $key=function_exists('mb_strtolower')?mb_strtolower($name,'UTF-8'):strtolower($name);
+            if(!isset($positions[$key])){$positions[$key]=count($subjects);$subjects[]=$subject;continue;}
+            $index=$positions[$key];$current=is_array($subjects[$index]??null)?$subjects[$index]:[];
+            foreach(['questionCount','weight'] as $field)if(!$this->metadataHasValue($current[$field]??null)&&$this->metadataHasValue($subject[$field]??null))$current[$field]=$subject[$field];
+            $current['topics']=array_values(array_unique(array_merge($topicList($current['topics']??[]),$topicList($subject['topics']??[])));
+            $current['expanded']=($current['expanded']??false)===true||($subject['expanded']??false)===true;
+            $subjects[$index]=$current;
+        }
+        $existing['subjects']=array_values($subjects);
         return $existing;
     }
 

@@ -359,6 +359,7 @@ export interface Prova {
   vacanciesDetailed?: ExamScopedTextItem[];
   conteudoProgramaticoDetalhado?: ExamProgrammaticContentItem[];
   programmaticContentDetailed?: ExamProgrammaticContentItem[];
+  programmaticContentPresentation?: ExamProgrammaticContentPresentation;
   observedQuestionTopics?: Array<{
     level?: string;
     name: string;
@@ -422,6 +423,21 @@ export interface ExamProgrammaticContentItem {
   orgao?: string;
   cargo?: string;
   foco?: string;
+}
+
+export interface ExamProgrammaticContentPresentation {
+  schemaVersion?: string;
+  sourceUrl?: string | null;
+  sourceLabel?: string | null;
+  summary?: string | null;
+  totalQuestions?: number | null;
+  subjects: Array<{
+    name: string;
+    questionCount?: number | null;
+    weight?: string;
+    topics: string[];
+    expanded?: boolean;
+  }>;
 }
 
 export interface ExamStage {

@@ -709,6 +709,16 @@ const normalizeProgrammaticItems = (jsonText: string, legacyText = ''): ExamProg
     })));
 };
 
+const safeHttpsLink = (value?: string | null) => {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
 const normalizeStageItems = (jsonText: string): ExamStageDraftItem[] => {
   const hasStructuredDraft = String(jsonText || '').trim().startsWith('[');
   const parsed = safeParseArray<Partial<ExamStageDraftItem> & Record<string, unknown>>(jsonText)
@@ -3186,6 +3196,28 @@ Se algum campo não estiver no documento, deixe vazio ou array vazio.`, [
                 />
               </div>
               <div className="w-full min-w-0" style={{ gridColumn: '1 / -1' }}>
+                {examPreview?.programmaticContentPresentation?.subjects?.length ? (
+                  <section className="mb-4 rounded-sm border border-indigo-200 bg-indigo-50/60 p-4 dark:border-indigo-900/70 dark:bg-indigo-950/20">
+                    <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Estrutura importada do conteúdo programático</h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                      {examPreview.programmaticContentPresentation.totalQuestions ? `${examPreview.programmaticContentPresentation.totalQuestions} questões na composição · ` : ''}
+                      {examPreview.programmaticContentPresentation.sourceLabel || 'Confira a fonte do edital antes de tratar os dados como transcrição integral.'}
+                    </p>
+                    <div className="mt-3 space-y-2">
+                      {examPreview.programmaticContentPresentation.subjects.map((subject, index) => (
+                        <details key={`${subject.name}-${index}`} open={subject.expanded} className="rounded-sm border border-indigo-100 bg-white px-3 py-2 dark:border-indigo-900/50 dark:bg-slate-900">
+                          <summary className="cursor-pointer text-xs font-bold text-slate-800 dark:text-slate-100">
+                            {subject.name}{subject.questionCount !== null && subject.questionCount !== undefined ? ` · ${subject.questionCount} questões` : ''}{subject.weight ? ` · ${subject.weight}` : ''}
+                          </summary>
+                          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600 dark:text-slate-300">
+                            {subject.topics.map((topic, topicIndex) => <li key={`${topic}-${topicIndex}`}>{topic}</li>)}
+                          </ul>
+                        </details>
+                      ))}
+                    </div>
+                    {safeHttpsLink(examPreview.programmaticContentPresentation.sourceUrl) ? <a href={safeHttpsLink(examPreview.programmaticContentPresentation.sourceUrl)!} target="_blank" rel="noreferrer" className="mt-3 inline-block text-xs font-bold text-indigo-700 underline dark:text-indigo-300">Abrir fonte declarada</a> : null}
+                  </section>
+                ) : null}
                 {examPreview?.observedQuestionTopics?.length ? (
                   <section className="mb-4 rounded-sm border border-sky-200 bg-sky-50/70 p-4 dark:border-sky-900/70 dark:bg-sky-950/20">
                     <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Assuntos observados nas questões</h3>

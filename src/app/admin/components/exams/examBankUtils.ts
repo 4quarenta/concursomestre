@@ -342,6 +342,23 @@ export const normalizeProvaRecord = (raw: unknown): Prova | null => {
     metadataRecord.conteudoProgramaticoDetalhado,
     metadataRecord.programmaticContentDetailed,
   );
+  const presentationRecord = toRecord(rawRecord.programmaticContentPresentation ?? metadataRecord.programmaticContentPresentation);
+  const programmaticContentPresentation = presentationRecord ? {
+    schemaVersion: toText(presentationRecord.schemaVersion),
+    sourceUrl: toText(presentationRecord.sourceUrl) || null,
+    sourceLabel: toText(presentationRecord.sourceLabel) || null,
+    summary: toText(presentationRecord.summary) || null,
+    totalQuestions: presentationRecord.totalQuestions === null || presentationRecord.totalQuestions === undefined
+      ? null : toNumber(presentationRecord.totalQuestions, 0),
+    subjects: toRecordList(presentationRecord.subjects).map((subject) => ({
+      name: toText(subject.name ?? subject.disciplina ?? subject.materia),
+      questionCount: subject.questionCount === null || subject.questionCount === undefined
+        ? null : toNumber(subject.questionCount, 0),
+      weight: toText(subject.weight ?? subject.pesoPorQuestao ?? subject.peso),
+      topics: toTextList(subject.topics ?? subject.temas ?? subject.assuntos),
+      expanded: subject.expanded === true,
+    })).filter((subject) => subject.name),
+  } : undefined;
   const etapas = toRecordList(rawRecord.etapas, metadataRecord.etapas);
   const questoesVinculadas = dedupeTextList([
     ...toTextList(rawRecord.questoesVinculadas),
@@ -490,6 +507,7 @@ export const normalizeProvaRecord = (raw: unknown): Prova | null => {
     programmaticContent: conteudoProgramatico,
     conteudoProgramaticoDetalhado: conteudoProgramaticoDetalhado as Prova['conteudoProgramaticoDetalhado'],
     programmaticContentDetailed: conteudoProgramaticoDetalhado as Prova['programmaticContentDetailed'],
+    programmaticContentPresentation,
     observedQuestionTopics: toRecordList(
       rawRecord.observedQuestionTopics,
       metadataRecord.observedQuestionTopics,

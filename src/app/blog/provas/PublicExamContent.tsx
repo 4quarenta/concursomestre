@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, permanentRedirect } from 'next/navigation';
-import { ArrowRight, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, Download, ExternalLink, FileText, GraduationCap, MapPin } from 'lucide-react';
+import { ArrowRight, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, ChevronDown, Download, ExternalLink, FileText, GraduationCap, MapPin } from 'lucide-react';
 import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
 import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import StructuredData from '@/components/seo/StructuredData';
@@ -23,6 +23,15 @@ const formatDate = (value: string | null) => {
 };
 
 const fileIcon = (file: PublicExamFile) => file.kind === 'gabarito' ? <Download size={17} /> : <FileText size={17} />;
+const safeHttpsUrl = (value?: string | null) => {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
 
 export async function generatePublicExamMetadata({ params }: PublicExamContentProps): Promise<Metadata> {
   const { slug } = await params;
@@ -127,7 +136,45 @@ export default async function PublicExamContent({ params, platformShell = false 
                 groups.set(key, group);
               }
               const program = [...groups.values()];
-              return program.length ? (
+              const presentation = exam.programmaticContentPresentation;
+              const presentationSubjects = presentation?.subjects?.filter((subject) => subject.name?.trim()) ?? [];
+              const sourceUrl = safeHttpsUrl(presentation?.sourceUrl);
+              const distribution = presentationSubjects
+                .filter((subject) => subject.questionCount !== null && subject.questionCount !== undefined)
+                .map((subject) => `${subject.questionCount} de ${subject.name}`);
+              const generatedSummary = presentation?.totalQuestions && distribution.length
+                ? `A prova objetiva prevê ${presentation.totalQuestions} questões: ${distribution.join(', ')}.`
+                : '';
+              return presentationSubjects.length ? (
+                <section className={`rounded-md border border-slate-200 bg-white p-6 dark:border-slate-800 ${cardSurfaceClass}`}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-xl font-black text-slate-950 dark:text-white">Conteúdo programático</h2>
+                      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{exam.programmaticContentIntegralVerificado === true ? 'Matérias e assuntos previstos no edital para este cargo.' : 'Matérias, assuntos e distribuição associados a esta prova.'}</p>
+                    </div>
+                    <span className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">{presentationSubjects.length} matérias</span>
+                  </div>
+                  {presentation?.summary || generatedSummary ? <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-slate-300">{presentation?.summary || generatedSummary}</p> : null}
+                  <div className="mt-3 divide-y divide-slate-200 dark:divide-slate-800">
+                    {presentationSubjects.map((subject, index) => (
+                      <details key={`${subject.name}-${index}`} open={subject.expanded} className="group">
+                        <summary className="flex min-h-14 cursor-pointer list-none flex-col items-start justify-center gap-1 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 [&::-webkit-details-marker]:hidden">
+                          <span className="font-bold text-slate-900 dark:text-slate-100">{subject.name}</span>
+                          {(subject.questionCount !== null && subject.questionCount !== undefined) || subject.weight ? (
+                            <span className="flex w-full items-center gap-2 text-left text-xs text-slate-500 dark:text-slate-400 sm:w-auto sm:shrink-0 sm:text-right">
+                              <span>{subject.questionCount !== null && subject.questionCount !== undefined ? <><strong className="text-slate-700 dark:text-slate-200">{subject.questionCount}</strong> questões</> : null}{subject.questionCount !== null && subject.questionCount !== undefined && subject.weight ? ' · ' : ''}{subject.weight || null}</span>
+                              <ChevronDown size={16} className="transition-transform group-open:rotate-180" aria-hidden="true" />
+                            </span>
+                          ) : null}
+                        </summary>
+                        {subject.topics.length ? <ul className="grid gap-x-7 border-t border-slate-200 py-2 sm:grid-cols-2 dark:border-slate-800">{subject.topics.map((topic, topicIndex) => <li key={`${topic}-${topicIndex}`} className="relative border-b border-slate-100 py-2.5 pl-4 text-sm leading-6 text-slate-600 before:absolute before:left-1 before:top-[19px] before:h-1 before:w-1 before:rounded-full before:bg-indigo-500 dark:border-slate-800 dark:text-slate-300">{topic}</li>)}</ul> : null}
+                      </details>
+                    ))}
+                  </div>
+                  <p className="mt-4 border-t border-slate-200 pt-3 text-xs leading-5 text-slate-500 dark:border-slate-800 dark:text-slate-400">{exam.programmaticContentIntegralVerificado === true ? 'Conteúdo reorganizado para facilitar a leitura; consulte o edital para conferir a redação integral e eventuais retificações.' : 'Estrutura organizada a partir dos dados cadastrados; consulte o edital para confirmar a redação e eventuais retificações.'}</p>
+                  {sourceUrl ? <a href={sourceUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm font-bold text-indigo-600 hover:underline dark:text-indigo-400">{presentation?.sourceLabel || exam.programmaticContentFonte || 'Consultar edital'}<ExternalLink size={14} aria-hidden="true" /></a> : presentation?.sourceLabel ? <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Fonte: {presentation.sourceLabel}</p> : null}
+                </section>
+              ) : program.length ? (
                 <section className={`rounded-md border border-slate-200 bg-white p-6 dark:border-slate-800 ${cardSurfaceClass}`}>
                   <h2 className="text-xl font-black text-slate-950 dark:text-white">Conteúdo programático</h2>
                   {exam.programmaticContentIntegralVerificado !== true ? (
