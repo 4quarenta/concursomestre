@@ -324,9 +324,9 @@ final class CmZipImportService
             if($weight!=='')$hasWeights=true;
             if($count!==null)$hasCounts=true;
             $topics=array_values(array_filter(array_map(static function($topic):string{
-                    if(is_array($topic))return trim((string)($topic['rotulo_normalizado']??$topic['nome']??$topic['assunto']??''));
+                    if(is_array($topic))return trim((string)($topic['rotulo_normalizado']??$topic['nome']??$topic['name']??$topic['assunto']??''));
                     return trim((string)$topic);
-                },is_array($item['temas']??null)?$item['temas']:[]));
+                },is_array($item['temas']??null)?$item['temas']:[])));
             $subjectsByName[$key]['topics']=array_values(array_unique(array_merge($subjectsByName[$key]['topics'],$topics)));
             $subjectsByName[$key]['expanded']=$subjectsByName[$key]['expanded']||($item['expanded']??false)===true;
         }
@@ -728,7 +728,7 @@ final class CmZipImportService
             if(!isset($positions[$key])){$positions[$key]=count($subjects);$subjects[]=$subject;continue;}
             $index=$positions[$key];$current=is_array($subjects[$index]??null)?$subjects[$index]:[];
             foreach(['questionCount','weight'] as $field)if(!$this->metadataHasValue($current[$field]??null)&&$this->metadataHasValue($subject[$field]??null))$current[$field]=$subject[$field];
-            $current['topics']=array_values(array_unique(array_merge($topicList($current['topics']??[]),$topicList($subject['topics']??[])));
+            $current['topics']=array_values(array_unique(array_merge($topicList($current['topics']??[]),$topicList($subject['topics']??[]))));
             $current['expanded']=($current['expanded']??false)===true||($subject['expanded']??false)===true;
             $subjects[$index]=$current;
         }
