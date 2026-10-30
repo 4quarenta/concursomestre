@@ -1012,10 +1012,14 @@ final class CmZipImportService
             $title=trim((string)($selected['title']??''));$year=(int)($selected['year']??0);
             if($title===''||$year<1900||$year>2100)throw new DomainException('Titulo ou ano invalido.');
             $slug=$this->uniqueExamSlug($title,0);
-            $insert=$this->db->prepare('INSERT INTO provas (nome,slug,ano,source_provider,source_external_id,status_editorial,visibility_status,metadata_json,created_by_user_id,updated_by_user_id) VALUES (:title,:slug,:year,"gran",:external,"draft","internal",:metadata,:creator,:updater)');
-            $insert->execute([':title'=>$title,':slug'=>$slug,':year'=>$year,':external'=>$externalId,':metadata'=>'{}',':creator'=>$this->actor,':updater'=>$this->actor]);
+            $insert=$this->db->prepare('INSERT INTO provas (nome,slug,ano,source_provider,source_external_id,status_editorial,visibility_status,metadata_json,created_by_user_id,updated_by_user_id,published_by_user_id) VALUES (:title,:slug,:year,"gran",:external,"published","public",:metadata,:creator,:updater,:publisher)');
+            $insert->execute([':title'=>$title,':slug'=>$slug,':year'=>$year,':external'=>$externalId,':metadata'=>'{}',':creator'=>$this->actor,':updater'=>$this->actor,':publisher'=>$this->actor]);
             $examId=(int)$this->db->lastInsertId();
-        }else $examId=(int)$row['id'];
+        }else {
+            $examId=(int)$row['id'];
+            $publish=$this->db->prepare('UPDATE provas SET status_editorial="published",visibility_status="public",published_by_user_id=COALESCE(published_by_user_id,:publisher),updated_by_user_id=:updater WHERE id=:id AND (status_editorial<>"published" OR visibility_status<>"public")');
+            $publish->execute([':publisher'=>$this->actor,':updater'=>$this->actor,':id'=>$examId]);
+        }
         $findLink=$this->db->prepare('SELECT id FROM question_provas WHERE question_id=:question AND prova_id=:exam LIMIT 1 FOR UPDATE');
         $insertLink=$this->db->prepare('INSERT INTO question_provas (question_id,prova_id,numero_na_prova,metadata_json) VALUES (:question,:exam,:number,:metadata)');
         foreach($resolved as $question){
