@@ -160,7 +160,7 @@ export default async function PublicExamContent({ params, platformShell = false 
                       <details key={`${subject.name}-${index}`} open={subject.expanded} className="group">
                         <summary className="flex min-h-14 cursor-pointer list-none flex-col items-start justify-center gap-1 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 [&::-webkit-details-marker]:hidden">
                           <span className="font-bold text-slate-900 dark:text-slate-100">{subject.name}</span>
-                          {(subject.questionCount !== null && subject.questionCount !== undefined) || subject.weight ? (
+                          {(subject.questionCount !== null && subject.questionCount !== undefined) || subject.weight || subject.topics.length > 0 ? (
                             <span className="flex w-full items-center gap-2 text-left text-xs text-slate-500 dark:text-slate-400 sm:w-auto sm:shrink-0 sm:text-right">
                               <span>{subject.questionCount !== null && subject.questionCount !== undefined ? <><strong className="text-slate-700 dark:text-slate-200">{subject.questionCount}</strong> questões</> : null}{subject.questionCount !== null && subject.questionCount !== undefined && subject.weight ? ' · ' : ''}{subject.weight || null}</span>
                               <ChevronDown size={16} className="transition-transform group-open:rotate-180" aria-hidden="true" />

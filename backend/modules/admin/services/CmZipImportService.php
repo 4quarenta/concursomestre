@@ -312,7 +312,7 @@ final class CmZipImportService
             $item['expanded']=($item['expanded']??false)||($fallback['expanded']??false);
         }
         unset($item);
-        $subjectsByName=[];$total=0;$hasCounts=false;$hasWeights=false;
+        $subjectsByName=[];$total=0;
         foreach($sourceRows as $item){
             $name=trim((string)($item['disciplina']??''));if($name==='')continue;
             $count=isset($item['questionCount'])&&is_numeric($item['questionCount'])?max(0,(int)$item['questionCount']):null;
@@ -321,8 +321,6 @@ final class CmZipImportService
             if(!isset($subjectsByName[$key]))$subjectsByName[$key]=['name'=>$name,'questionCount'=>$count,'weight'=>$weight,'topics'=>[],'expanded'=>false];
             elseif($subjectsByName[$key]['questionCount']===null&&$count!==null)$subjectsByName[$key]['questionCount']=$count;
             if($subjectsByName[$key]['weight']===''&&$weight!=='')$subjectsByName[$key]['weight']=$weight;
-            if($weight!=='')$hasWeights=true;
-            if($count!==null)$hasCounts=true;
             $topics=array_values(array_filter(array_map(static function($topic):string{
                     if(is_array($topic))return trim((string)($topic['rotulo_normalizado']??$topic['nome']??$topic['name']??$topic['assunto']??''));
                     return trim((string)$topic);
@@ -330,17 +328,21 @@ final class CmZipImportService
             $subjectsByName[$key]['topics']=array_values(array_unique(array_merge($subjectsByName[$key]['topics'],$topics)));
             $subjectsByName[$key]['expanded']=$subjectsByName[$key]['expanded']||($item['expanded']??false)===true;
         }
-        $subjects=array_values($subjectsByName);
-        foreach($subjects as $subject)if($subject['questionCount']!==null)$total+=$subject['questionCount'];
-        $explicit=!empty($raw['subjects']);
-        if(!$subjects||(!$explicit&&!$hasCounts&&!$hasWeights))return [];
+        $subjects=array_values($subjectsByName);$hasCounts=false;
+        foreach($subjects as $subject)if($subject['questionCount']!==null){$total+=$subject['questionCount'];$hasCounts=true;}
+        $hasStructuredProgram=$program!==[]||!empty($raw['subjects']);
+        if(!$subjects||!$hasStructuredProgram)return [];
         $providedTotal=$raw['totalQuestions']??$raw['totalQuestoes']??$metaFields['totalQuestions']??null;
         $totalQuestions=is_numeric($providedTotal)?max(0,(int)$providedTotal):($hasCounts?$total:null);
-        $sourceUrl=trim((string)($raw['sourceUrl']??$raw['urlFonte']??$programEvidence['sourceUrl']??''));
+        $asText=static function(mixed $value):string{
+            if(is_array($value))$value=$value['label']??$value['nome']??$value['titulo']??$value['name']??$value['title']??$value['url']??$value['href']??'';
+            return is_scalar($value)?trim((string)$value):'';
+        };
+        $sourceUrl=$asText($raw['sourceUrl']??$raw['urlFonte']??$programEvidence['sourceUrl']??'');
         if($sourceUrl!==''&&filter_var($sourceUrl,FILTER_VALIDATE_URL)===false)$sourceUrl='';
         if($sourceUrl!==''&&strtolower((string)parse_url($sourceUrl,PHP_URL_SCHEME))!=='https')$sourceUrl='';
-        $sourceLabel=trim((string)($raw['sourceLabel']??$raw['fonte']??$programEvidence['sourceLabel']??$programEvidence['fonte_programa']??''));
-        $summary=trim((string)($raw['summary']??$raw['description']??$raw['resumo']??''));
+        $sourceLabel=$asText($raw['sourceLabel']??$raw['fonte']??$programEvidence['sourceLabel']??$programEvidence['fonte_programa']??'');
+        $summary=$asText($raw['summary']??$raw['description']??$raw['resumo']??'');
         return ['schemaVersion'=>'cm-exam-program.v1','sourceUrl'=>$sourceUrl?:null,'sourceLabel'=>$sourceLabel?:null,
             'summary'=>$summary?:null,'totalQuestions'=>$totalQuestions,'subjects'=>$subjects];
     }
