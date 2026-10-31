@@ -87,6 +87,7 @@ export default function ImportadorZipPage() {
   const [position, setPosition] = React.useState(0);
   const [errors, setErrors] = React.useState<string[]>([]);
   const [allow, setAllow] = React.useState(false);
+  const [autoResume, setAutoResume] = React.useState(true);
   const [resumeId, setResumeId] = React.useState('');
   const stop = React.useRef(false);
 
@@ -152,24 +153,44 @@ export default function ImportadorZipPage() {
   const process = async () => {
     if (!isAdmin || !run || busy || !allPreviewed || previewsBlocked) return;
     setBusy(true); setErrors([]); stop.current=false;
-    let idx=0;
-    for (const exam of run.inventory.exams) {
-      if (stop.current) break;
-      if (results[exam.externalKey]?.status==='done') {idx++;setPosition(idx);continue;}
-      try {
-        const response = apiEnvelope<Result>(await apiClient.post<ApiEnvelope<Result>>(ENDPOINT,{
-          action:'process',runId:run.runId,examKey:exam.externalKey,
-          allowUnverifiedPublication: allow,
-        },{timeout:260000}));
-        if (!response.success) throw new Error('Falha na importacao desta prova.');
-        setResults(prev=>({...prev,[exam.externalKey]:response.data}));
-      } catch (err) {
-        const reason=message(err);
-        setResults(prev=>({...prev,[exam.externalKey]:{status:'error',externalKey:exam.externalKey,message:reason}}));
-        setErrors(prev=>[...prev,`${exam.externalKey}: ${reason}`]);
+    const nextResults={...results};
+    let pending=run.inventory.exams.filter(exam=>nextResults[exam.externalKey]?.status!=='done');
+    let processed=0;
+    for(let attempt=0;pending.length>0 && attempt<(autoResume?3:1);attempt++) {
+      if(attempt>0) {
+        const retryKeys=new Set(pending.map(exam=>exam.externalKey));
+        setErrors(prev=>[...prev,`Retomando automaticamente ${pending.length} prova(s) pendente(s) — tentativa ${attempt+1}/3.`]);
+        for(let i=0;i<run.inventory.exams.length;i++) {
+          if(!retryKeys.has(run.inventory.exams[i].externalKey))continue;
+          try {
+            const response=apiEnvelope<Preview>(await apiClient.post<ApiEnvelope<Preview>>(ENDPOINT,{action:'preview',runId:run.runId,examKey:run.inventory.exams[i].externalKey},{timeout:240000}));
+            setPreviews(prev=>({...prev,[run.inventory.exams[i].externalKey]:response.data}));
+          } catch(err) {setErrors(prev=>[...prev,`${run.inventory.exams[i].externalKey}: não foi possível atualizar a prévia: ${message(err)}`]);}
+        }
       }
-      idx++; setPosition(idx);
+      const failed=[] as Exam[];
+      for(const exam of pending) {
+        if(stop.current)break;
+        try {
+          const response=apiEnvelope<Result>(await apiClient.post<ApiEnvelope<Result>>(ENDPOINT,{
+            action:'process',runId:run.runId,examKey:exam.externalKey,
+            allowUnverifiedPublication: allow,
+          },{timeout:260000}));
+          if (!response.success) throw new Error('Falha na importacao desta prova.');
+          nextResults[exam.externalKey]=response.data;setResults(prev=>({...prev,[exam.externalKey]:response.data}));
+        } catch(err) {
+          const reason=message(err);
+          nextResults[exam.externalKey]={status:'error',externalKey:exam.externalKey,message:reason};
+          setResults(prev=>({...prev,[exam.externalKey]:nextResults[exam.externalKey]}));
+          setErrors(prev=>[...prev,`${exam.externalKey}: ${reason}`]);
+          failed.push(exam);
+        }
+        processed++;setPosition(processed);
+      }
+      pending=failed.filter(exam=>nextResults[exam.externalKey]?.status!=='done');
+      if(stop.current)break;
     }
+    if(pending.length) setErrors(prev=>[...prev,`${pending.length} prova(s) continuam pendentes após as tentativas automáticas. Use “Retomar pendências” para tentar novamente.`]);
     setBusy(false);
   };
 
@@ -205,6 +226,10 @@ export default function ImportadorZipPage() {
       </label>
       <div className="flex flex-wrap gap-3">
         <button type="button" disabled={busy || !allPreviewed || previewsBlocked} onClick={process} className="rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{completed?'Retomar pendências':'Processar provas'}</button>
+        <label className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700">
+          <input type="checkbox" checked={autoResume} onChange={e=>setAutoResume(e.target.checked)} disabled={busy}/>
+          Retomar pendências automaticamente (até 3 tentativas)
+        </label>
         {busy && <button type="button" onClick={()=>{stop.current=true;}} className="rounded-lg border border-slate-400 px-5 py-2.5 text-sm">Parar após prova atual</button>}
       </div>
       <p className="text-sm text-slate-500" role="status">{completed} prova(s) concluída(s) · {position}/{run.inventory.exams.length} processada(s) nesta sessão</p>
